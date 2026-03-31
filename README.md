@@ -1,5 +1,8 @@
 # AI Todo Board
 
+[![GitHub](https://img.shields.io/badge/GitHub-Xiaofan629%2Fai--todo--board-blue?logo=github)](https://github.com/Xiaofan629/ai-todo-board)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 ## 项目简介
 
 一个智能待办事项管理系统，专为工作场景设计，解决多人协作中的任务遗忘问题。
@@ -54,11 +57,27 @@ cd ai-todo-board
 ```
 
 2. 创建并激活虚拟环境
+
+**方法 A：使用 venv（推荐，macOS/有权限的 Linux）**
 ```bash
 python3 -m venv venv
 source venv/bin/activate  # macOS/Linux
 # 或
 venv\Scripts\activate  # Windows
+```
+
+**方法 B：使用 virtualenv（Linux 服务器无 root 权限）**
+```bash
+# 安装 virtualenv
+pip3 install --user virtualenv
+
+# 创建虚拟环境
+python3 -m virtualenv venv
+# 或
+virtualenv venv
+
+# 激活
+source venv/bin/activate
 ```
 
 3. 安装 Python 依赖
