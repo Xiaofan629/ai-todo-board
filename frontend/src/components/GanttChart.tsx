@@ -207,27 +207,36 @@ function GanttRow({
       <div className="flex-1 relative h-full group">
         {isActive ? (
           <div
-            className={`absolute top-1/2 -translate-y-1/2 h-5 rounded-sm ${cfg.bar} shadow-sm ${cfg.glow} gantt-bar-animate group-hover:brightness-125 transition-all`}
-            data-gantt-animated
+            className="absolute inset-y-0 flex items-center"
+            data-gantt-bar-shell
             style={{ left: `${leftPercent}%`, width: `${widthPercent}%` }}
           >
-            {widthPercent > 10 && (
-              <span
-                className="flex h-full items-center truncate px-1.5 text-[10px] leading-none text-white/90"
-                data-gantt-duration-text
-              >
-                {formatDuration(duration)}
-              </span>
-            )}
-            {bar.isInserted && (
-              <div className="absolute -left-[5px] top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-orange-400 rotate-45 z-10 shadow-sm shadow-orange-400/50" />
-            )}
+            <div
+              className={`relative flex h-5 items-center rounded-sm ${cfg.bar} shadow-sm ${cfg.glow} gantt-bar-animate group-hover:brightness-125 transition-all`}
+              data-gantt-animated
+              data-gantt-bar-box
+              style={{ width: '100%' }}
+            >
+              {widthPercent > 10 && (
+                <span
+                  className="block truncate px-1.5 text-[10px] leading-none text-white/90"
+                  data-gantt-duration-text
+                >
+                  {formatDuration(duration)}
+                </span>
+              )}
+              {bar.isInserted && (
+                <div className="absolute -left-[5px] top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-orange-400 rotate-45 z-10 shadow-sm shadow-orange-400/50" />
+              )}
+            </div>
           </div>
         ) : (
           <div
-            className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rotate-45 bg-yellow-400/50 border border-yellow-400/70"
+            className="absolute inset-y-0 flex items-center"
             style={{ left: `${leftPercent}%` }}
-          />
+          >
+            <div className="w-2.5 h-2.5 rotate-45 bg-yellow-400/50 border border-yellow-400/70" />
+          </div>
         )}
 
         {/* Tooltip */}
@@ -359,15 +368,34 @@ export default function GanttChart({ todos, onSelect, selectedId }: GanttChartPr
         node.style.alignItems = 'center';
         node.style.height = '100%';
         node.style.lineHeight = '1';
-        node.style.transform = 'translateY(-1px)';
+      });
+
+      exportRoot.querySelectorAll<HTMLElement>('[data-gantt-bar-shell]').forEach((node) => {
+        node.style.top = '0';
+        node.style.bottom = '0';
+        node.style.display = 'flex';
+        node.style.alignItems = 'center';
+      });
+
+      exportRoot.querySelectorAll<HTMLElement>('[data-gantt-bar-box]').forEach((node) => {
+        node.style.display = 'flex';
+        node.style.alignItems = 'center';
+        node.style.height = '20px';
+        node.style.boxSizing = 'border-box';
+        node.style.overflow = 'visible';
       });
 
       exportRoot.querySelectorAll<HTMLElement>('[data-gantt-duration-text]').forEach((node) => {
         node.style.display = 'flex';
         node.style.alignItems = 'center';
-        node.style.height = '100%';
-        node.style.lineHeight = '1';
-        node.style.transform = 'translateY(-1px)';
+        node.style.height = '20px';
+        node.style.lineHeight = '20px';
+        node.style.overflow = 'visible';
+        node.style.paddingTop = '0';
+        node.style.paddingBottom = '0';
+        node.style.marginTop = '0';
+        node.style.marginBottom = '0';
+        node.style.boxSizing = 'border-box';
       });
 
       document.body.appendChild(exportRoot);
