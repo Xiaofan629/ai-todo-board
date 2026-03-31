@@ -4,6 +4,7 @@ import logging
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,7 +32,7 @@ def _extract_text_from_content(content) -> str:
     if not isinstance(content, list):
         return ""
 
-    parts: list[str] = []
+    parts: List[str] = []
     for block in content:
         if not isinstance(block, dict):
             continue
@@ -81,7 +82,7 @@ def _should_persist_event(event: dict) -> bool:
 
 
 async def _run_agent_for_todo(todo_id: int, prompt: str,
-                              resume_session_id: str | None = None) -> str:
+                              resume_session_id: Optional[str] = None) -> str:
     full_response = ""
     current_session_id = resume_session_id
 

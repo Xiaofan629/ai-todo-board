@@ -2,14 +2,14 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, List, Optional
 
 from config import CLAUDE_BIN, CLAUDE_MODEL
 
 logger = logging.getLogger("agent_bridge")
 
 
-def build_transcript_prompt(messages: list[dict]) -> str:
+def build_transcript_prompt(messages: List[dict]) -> str:
     if not messages:
         return ""
 
@@ -30,7 +30,7 @@ def build_transcript_prompt(messages: list[dict]) -> str:
     return "\n".join(lines).strip()
 
 
-def _build_command(prompt: str, resume_session_id: Optional[str] = None) -> list[str]:
+def _build_command(prompt: str, resume_session_id: Optional[str] = None) -> List[str]:
     cmd = [
         CLAUDE_BIN,
         "-p",

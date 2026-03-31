@@ -1,6 +1,7 @@
 import aiosqlite
 import os
 from datetime import datetime
+from typing import Dict, List, Optional, Tuple
 from config import DB_PATH
 
 # Map internal DB statuses to frontend statuses
@@ -73,13 +74,13 @@ async def _ensure_column(db, table: str, column: str, definition: str):
         await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
-async def _rebalance_open_todos(db) -> dict[int, str]:
+async def _rebalance_open_todos(db) -> Dict[int, str]:
     now = datetime.now().isoformat()
     rows = await db.execute_fetchall(
         "SELECT id FROM todos WHERE status != 'completed' ORDER BY created_at ASC, id ASC"
     )
-    status_map: dict[int, str] = {}
-    updates: list[tuple[str, str, int]] = []
+    status_map: Dict[int, str] = {}
+    updates: List[Tuple[str, str, int]] = []
     for index, row in enumerate(rows):
         status = "doing" if index == 0 else "pending"
         status_map[row["id"]] = status
@@ -133,7 +134,7 @@ async def get_todos(status: str = None) -> list:
     return [_map_todo(dict(r)) for r in rows]
 
 
-async def get_todo(todo_id: int) -> dict | None:
+async def get_todo(todo_id: int) -> Optional[dict]:
     db = await get_db()
     rows = await db.execute_fetchall("SELECT * FROM todos WHERE id = ?", (todo_id,))
     await db.close()
@@ -149,7 +150,7 @@ async def update_todo_status(todo_id: int, status: str):
     await db.close()
 
 
-async def sync_todo_queue(todo_id: int | None = None) -> str | None:
+async def sync_todo_queue(todo_id: Optional[int] = None) -> Optional[str]:
     db = await get_db()
     status_map = await _rebalance_open_todos(db)
     await db.commit()
@@ -181,7 +182,7 @@ async def set_todo_processing(todo_id: int, is_processing: bool):
     await db.close()
 
 
-async def complete_todo(todo_id: int) -> int | None:
+async def complete_todo(todo_id: int) -> Optional[int]:
     """Mark a todo as completed and auto-promote the next pending todo to doing.
     Returns the id of the newly promoted todo, or None."""
     db = await get_db()
