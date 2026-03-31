@@ -29,7 +29,7 @@ export default function TodoList({ todos, selectedId, onSelect }: TodoListProps)
   const [ownerName, setOwnerName] = useState('TODOs');
 
   useEffect(() => {
-    fetch('/api/config')
+    fetch('./api/config')
       .then(res => res.json())
       .then(data => setOwnerName(data.owner_name))
       .catch(() => {});

@@ -1,6 +1,6 @@
 import type { Todo, Message, Stats, ChatResponse, TodoStatus } from './types';
 
-const API_BASE = '/api';
+const API_BASE = './api';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${url}`, {

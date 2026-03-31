@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from agent_bridge import build_transcript_prompt, call_agent
-from config import SERVER_HOST, SERVER_PORT, OWNER_NAME, SPECIAL_USERID
+from config import SERVER_HOST, SERVER_PORT, OWNER_NAME, SPECIAL_USERID, ROOT_PATH
 from database import (add_message, complete_todo, create_todo, get_messages,
                       get_todo, get_todos, get_stats, init_db, set_todo_claude_session_id,
                       set_todo_processing,
@@ -199,7 +199,7 @@ async def lifespan(app: FastAPI):
     ws_task.cancel()
 
 
-app = FastAPI(title="WeCom Bot + Todo Dashboard", lifespan=lifespan)
+app = FastAPI(title="WeCom Bot + Todo Dashboard", lifespan=lifespan, root_path=ROOT_PATH)
 app.add_middleware(CORSMiddleware, allow_origins=["*"],
                    allow_methods=["*"], allow_headers=["*"])
 
