@@ -89,15 +89,26 @@ pip install -r requirements.txt
 ```bash
 cd frontend
 npm install
-npm run build
+# 如果部署在子路径下（如 /xiaofantodo/），需要指定 VITE_BASE_PATH
+VITE_BASE_PATH=/xiaofantodo/ npm run build
+# 如果部署在根路径，直接运行
+# npm run build
 cd ..
 ```
 
 5. 配置环境变量
 ```bash
 cp .env.example .env
-# 编辑 .env 文件，填入你的企业微信机器人配置
+# 编辑 .env 文件，填入你的配置
 ```
+
+**主要配置项：**
+- `WECOM_BOT_ID` - 企业微信机器人 ID
+- `WECOM_BOT_SECRET` - 企业微信机器人密钥
+- `SERVER_PORT` - 服务端口（默认 9526）
+- `ROOT_PATH` - 部署路径前缀（如 `/xiaofantodo`，根路径留空）
+- `OWNER_NAME` - 所有者名称
+- `CLAUDE_BIN` - Claude CLI 路径（默认 `claude`）
 
 6. 启动服务
 ```bash
@@ -110,7 +121,17 @@ cp .env.example .env
 直接在企业微信群中 @机器人 发送任务描述即可
 
 ### 通过网页管理
-访问 `http://localhost:9526` 查看和管理所有任务
+- 本地部署：访问 `http://localhost:9526`
+- 子路径部署：访问 `http://your-domain.com/your-path/`（需配置 `ROOT_PATH` 和 `VITE_BASE_PATH`）
+
+### 后台运行
+```bash
+nohup ./start.sh > output.log 2>&1 &
+# 查看日志
+tail -f output.log
+# 停止服务
+lsof -ti:9526 | xargs kill -9
+```
 
 ## 技术栈
 
