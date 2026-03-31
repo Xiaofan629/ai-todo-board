@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 from config import CLAUDE_BIN, CLAUDE_MODEL
 
@@ -30,7 +30,7 @@ def build_transcript_prompt(messages: list[dict]) -> str:
     return "\n".join(lines).strip()
 
 
-def _build_command(prompt: str, resume_session_id: str | None = None) -> list[str]:
+def _build_command(prompt: str, resume_session_id: Optional[str] = None) -> list[str]:
     cmd = [
         CLAUDE_BIN,
         "-p",
@@ -49,7 +49,7 @@ def _build_command(prompt: str, resume_session_id: str | None = None) -> list[st
     return cmd
 
 
-async def call_agent(prompt: str, resume_session_id: str | None = None) -> AsyncGenerator[dict, None]:
+async def call_agent(prompt: str, resume_session_id: Optional[str] = None) -> AsyncGenerator[dict, None]:
     """Call Claude Code CLI in bypass-permissions mode and yield NDJSON events."""
     if not prompt.strip():
         yield {
