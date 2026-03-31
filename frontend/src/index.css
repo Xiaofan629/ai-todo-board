@@ -117,3 +117,37 @@ pre.tool-json {
   word-break: break-all;
   color: #d1d5db; /* gray-300 */
 }
+
+/* --- Gantt chart animations --- */
+@keyframes gantt-bar-appear {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+.gantt-bar-animate {
+  transform-origin: left center;
+  animation: gantt-bar-appear 0.4s ease-out both;
+}
+
+@keyframes gantt-today-pulse {
+  0%, 100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
+
+.gantt-today-marker {
+  animation: gantt-today-pulse 3s ease-in-out infinite;
+}
+
+.gantt-row:hover .gantt-bar-animate {
+  filter: brightness(1.2);
+}

@@ -18,6 +18,8 @@ _STATUS_MAP = {
 def _map_todo(t: dict) -> dict:
     t["status"] = _STATUS_MAP.get(t["status"], t["status"])
     t["is_processing"] = bool(t.get("is_processing", 0))
+    t["sort_order"] = t.get("sort_order", 0)
+    t["reorder_reason"] = t.get("reorder_reason", "")
     return t
 
 
@@ -60,6 +62,8 @@ async def init_db():
     """)
     await _ensure_column(db, "todos", "claude_session_id", "TEXT DEFAULT ''")
     await _ensure_column(db, "todos", "is_processing", "INTEGER NOT NULL DEFAULT 0")
+    await _ensure_column(db, "todos", "sort_order", "INTEGER DEFAULT 0")
+    await _ensure_column(db, "todos", "reorder_reason", "TEXT DEFAULT ''")
     await _ensure_column(db, "messages", "event_type", "TEXT DEFAULT ''")
     await _ensure_column(db, "messages", "event_subtype", "TEXT DEFAULT ''")
     await _ensure_column(db, "messages", "payload", "TEXT DEFAULT ''")
@@ -75,9 +79,11 @@ async def _ensure_column(db, table: str, column: str, definition: str):
 
 
 async def _rebalance_open_todos(db) -> Dict[int, str]:
+    """Ensure the first non-completed todo (by sort_order) is 'doing', rest are 'pending'."""
     now = datetime.now().isoformat()
     rows = await db.execute_fetchall(
-        "SELECT id FROM todos WHERE status != 'completed' ORDER BY created_at ASC, id ASC"
+        "SELECT id FROM todos WHERE status != 'completed' AND status != 'failed' "
+        "ORDER BY sort_order ASC, created_at ASC, id ASC"
     )
     status_map: Dict[int, str] = {}
     updates: List[Tuple[str, str, int]] = []
@@ -110,7 +116,7 @@ async def create_todo(title: str, content: str, userid: str = "",
     return _map_todo({"id": todo_id, "title": title, "content": content,
             "status": status_map.get(todo_id, "pending"),
             "userid": userid, "chatid": chatid, "chattype": chattype,
-            "claude_session_id": "", "is_processing": False,
+            "claude_session_id": "", "is_processing": False, "sort_order": 0,
             "created_at": now, "updated_at": now})
 
 
@@ -121,15 +127,15 @@ async def get_todos(status: str = None) -> list:
         statuses = [s.strip() for s in status.split(",")]
         if len(statuses) == 1:
             rows = await db.execute_fetchall(
-                "SELECT * FROM todos WHERE status = ? ORDER BY created_at ASC",
+                "SELECT * FROM todos WHERE status = ? ORDER BY sort_order ASC, created_at ASC",
                 (statuses[0],))
         else:
             placeholders = ",".join("?" for _ in statuses)
             rows = await db.execute_fetchall(
-                f"SELECT * FROM todos WHERE status IN ({placeholders}) ORDER BY created_at ASC",
+                f"SELECT * FROM todos WHERE status IN ({placeholders}) ORDER BY sort_order ASC, created_at ASC",
                 statuses)
     else:
-        rows = await db.execute_fetchall("SELECT * FROM todos ORDER BY created_at ASC")
+        rows = await db.execute_fetchall("SELECT * FROM todos ORDER BY sort_order ASC, created_at ASC")
     await db.close()
     return [_map_todo(dict(r)) for r in rows]
 
@@ -146,6 +152,15 @@ async def update_todo_status(todo_id: int, status: str):
     now = datetime.now().isoformat()
     await db.execute("UPDATE todos SET status = ?, updated_at = ? WHERE id = ?",
                      (status, now, todo_id))
+    await db.commit()
+    await db.close()
+
+
+async def update_todo_title(todo_id: int, title: str):
+    db = await get_db()
+    now = datetime.now().isoformat()
+    await db.execute("UPDATE todos SET title = ?, updated_at = ? WHERE id = ?",
+                     (title[:100], now, todo_id))
     await db.commit()
     await db.close()
 
@@ -235,3 +250,53 @@ async def get_stats() -> dict:
         if mapped in stats:
             stats[mapped] += r["count"]
     return stats
+
+
+async def reorder_todo(todo_id: int, target_index: int, reason: str = "", promote_to_doing: bool = False) -> bool:
+    """Move a todo to a specific position by updating sort_order.
+
+    After moving, rebalances statuses so the first non-completed todo is 'doing'.
+    The promote_to_doing flag is kept for API compatibility but the rebalance
+    handles status assignment automatically based on sort_order.
+    """
+    db = await get_db()
+    now = datetime.now().isoformat()
+
+    # Get the todo being moved
+    todo = await db.execute_fetchall("SELECT * FROM todos WHERE id = ?", (todo_id,))
+    if not todo:
+        await db.close()
+        return False
+
+    # Get ALL non-completed todos ordered by sort_order to calculate new position
+    all_rows = await db.execute_fetchall(
+        "SELECT id, sort_order FROM todos WHERE status != 'completed' AND status != 'failed' "
+        "ORDER BY sort_order ASC, created_at ASC, id ASC"
+    )
+
+    # Filter out the moved item to get siblings
+    siblings = [(r["id"], r["sort_order"]) for r in all_rows if r["id"] != todo_id]
+
+    # Clamp target_index
+    target_index = max(0, min(target_index, len(siblings)))
+
+    # Calculate new sort_order as average of surrounding items
+    if len(siblings) == 0:
+        new_order = 0
+    elif target_index == 0:
+        new_order = siblings[0][1] - 1000
+    elif target_index >= len(siblings):
+        new_order = siblings[-1][1] + 1000
+    else:
+        new_order = (siblings[target_index - 1][1] + siblings[target_index][1]) / 2
+
+    await db.execute(
+        "UPDATE todos SET sort_order = ?, reorder_reason = ?, updated_at = ? WHERE id = ?",
+        (int(new_order), reason.strip(), now, todo_id),
+    )
+
+    # Rebalance: first non-completed todo by sort_order becomes 'doing', rest 'pending'
+    await _rebalance_open_todos(db)
+    await db.commit()
+    await db.close()
+    return True

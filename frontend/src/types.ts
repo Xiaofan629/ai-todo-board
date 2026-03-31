@@ -8,6 +8,8 @@ export interface Todo {
   content: string;
   status: TodoStatus;
   is_processing: boolean;
+  sort_order: number;
+  reorder_reason: string;
   userid: string;
   chatid: string;
   chattype: string;

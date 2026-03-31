@@ -1,6 +1,8 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import type { Todo, TodoStatus } from '../types';
+import { reorderTodo } from '../api';
 import TodoCard from './TodoCard';
+import GanttChart from './GanttChart';
 
 interface TodoListProps {
   todos: Todo[];
@@ -27,6 +29,19 @@ export default function TodoList({ todos, selectedId, onSelect }: TodoListProps)
   const [dateFilter, setDateFilter] = useState(7);
   const [searchQuery, setSearchQuery] = useState('');
   const [ownerName, setOwnerName] = useState('TODOs');
+  const [showGanttModal, setShowGanttModal] = useState(false);
+
+  // Drag state
+  const [dragSourceId, setDragSourceId] = useState<number | null>(null);
+  const [dropIndicator, setDropIndicator] = useState<{ index: number; position: 'top' | 'bottom' } | null>(null);
+
+  // Reason modal
+  const [showReasonModal, setShowReasonModal] = useState(false);
+  const [reasonText, setReasonText] = useState('');
+  const [pendingReorder, setPendingReorder] = useState<{ todoId: number; targetIndex: number; promoteToDoing: boolean } | null>(null);
+
+  // Track the drag target index calculated on last dragOver
+  const dropTargetRef = useRef<{ index: number; position: 'top' | 'bottom' } | null>(null);
 
   useEffect(() => {
     fetch('./api/config')
@@ -38,21 +53,18 @@ export default function TodoList({ todos, selectedId, onSelect }: TodoListProps)
   const filteredTodos = useMemo(() => {
     let result = todos;
 
-    // Filter by date
     if (dateFilter > 0) {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - dateFilter);
       result = result.filter((t) => new Date(t.created_at) >= cutoff);
     }
 
-    // Filter by status
     if (statusFilter === 'not_done') {
       result = result.filter((t) => t.status !== 'done');
     } else if (statusFilter !== 'all') {
       result = result.filter((t) => t.status === statusFilter);
     }
 
-    // Filter by search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       result = result.filter(
@@ -65,6 +77,101 @@ export default function TodoList({ todos, selectedId, onSelect }: TodoListProps)
 
     return result;
   }, [todos, statusFilter, dateFilter, searchQuery]);
+
+  const handleDragStart = useCallback((todoId: number) => {
+    setDragSourceId(todoId);
+    setDropIndicator(null);
+    dropTargetRef.current = null;
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+
+    // Determine top/bottom based on mouse Y relative to the card center
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    const position: 'top' | 'bottom' = e.clientY < midY ? 'top' : 'bottom';
+
+    const newIndicator = { index, position };
+    // Only update state if it actually changed
+    const prev = dropTargetRef.current;
+    if (!prev || prev.index !== newIndicator.index || prev.position !== newIndicator.position) {
+      dropTargetRef.current = newIndicator;
+      setDropIndicator(newIndicator);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const sourceId = dragSourceId;
+    const target = dropTargetRef.current;
+    setDropIndicator(null);
+    dropTargetRef.current = null;
+    setDragSourceId(null);
+
+    if (sourceId === null || !target) return;
+
+    const sourceTodo = filteredTodos.find((t) => t.id === sourceId);
+    if (!sourceTodo) return;
+    const sourceIndex = filteredTodos.findIndex((t) => t.id === sourceId);
+
+    // Calculate the target position in the filtered array
+    let targetIndex = target.position === 'top' ? target.index : target.index + 1;
+    // If dragging down, subtract 1 because removing the source shifts everything up
+    if (sourceIndex < targetIndex) {
+      targetIndex -= 1;
+    }
+    // Same position, no-op
+    if (sourceIndex === targetIndex) return;
+
+    // Determine if this should promote to doing:
+    // The drop target is the first doing item, and we're dropping above it (position='top')
+    // Or the filtered list has a doing item at index 0, and targetIndex ends up 0
+    const firstDoingIndex = filteredTodos.findIndex((t) => t.status === 'doing');
+    const dropBeforeDoing = firstDoingIndex !== -1 && targetIndex <= firstDoingIndex;
+    const promoteToDoing = sourceTodo.status === 'pending' && dropBeforeDoing;
+
+    setPendingReorder({ todoId: sourceId, targetIndex, promoteToDoing });
+    setReasonText('');
+    setShowReasonModal(true);
+  }, [dragSourceId, filteredTodos]);
+
+  const handleDragEnd = useCallback(() => {
+    setDragSourceId(null);
+    setDropIndicator(null);
+    dropTargetRef.current = null;
+  }, []);
+
+  const confirmReorder = async () => {
+    if (!pendingReorder) return;
+    try {
+      await reorderTodo(pendingReorder.todoId, pendingReorder.targetIndex, reasonText, pendingReorder.promoteToDoing);
+    } catch (err) {
+      console.error('Failed to reorder:', err);
+    }
+    setShowReasonModal(false);
+    setPendingReorder(null);
+    setReasonText('');
+  };
+
+  const cancelReorder = () => {
+    setShowReasonModal(false);
+    setPendingReorder(null);
+    setReasonText('');
+  };
+
+  /** Determine the drop indicator for a given card index. */
+  const getDropPosition = (index: number): 'top' | 'bottom' | null => {
+    if (!dropIndicator || dragSourceId === null) return null;
+    if (dropIndicator.index !== index) return null;
+
+    // Don't show indicator on the source itself at its own position
+    const sourceIndex = filteredTodos.findIndex((t) => t.id === dragSourceId);
+    if (sourceIndex === index) return null;
+
+    return dropIndicator.position;
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -81,6 +188,7 @@ export default function TodoList({ todos, selectedId, onSelect }: TodoListProps)
             href="https://github.com/Xiaofan629/ai-todo-board"
             target="_blank"
             rel="noopener noreferrer"
+            onClick={(e) => { e.preventDefault(); window.open('https://github.com/Xiaofan629/ai-todo-board', '_blank'); }}
             className="text-gray-400 hover:text-gray-200 transition-colors"
             title="GitHub"
           >
@@ -91,9 +199,9 @@ export default function TodoList({ todos, selectedId, onSelect }: TodoListProps)
         </div>
       </div>
 
-      {/* Search */}
-      <div className="px-4 pb-2 flex-shrink-0">
-        <div className="relative">
+      {/* Search + View toggle */}
+      <div className="px-4 pb-2 flex-shrink-0 flex items-center gap-2">
+        <div className="relative flex-1">
           <svg
             className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500"
             fill="none"
@@ -111,6 +219,16 @@ export default function TodoList({ todos, selectedId, onSelect }: TodoListProps)
             className="w-full pl-9 pr-3 py-2 bg-gray-800 border border-gray-700/50 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/30 transition-colors"
           />
         </div>
+        <button
+          type="button"
+          onClick={() => setShowGanttModal(true)}
+          className="p-2 bg-gray-800 border border-gray-700/50 rounded-lg text-gray-400 hover:text-blue-400 hover:border-blue-500/30 transition-colors"
+          title="甘特图"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18v16H3zM7 8h6M7 12h10M7 16h4" />
+          </svg>
+        </button>
       </div>
 
       {/* Date filter */}
@@ -163,6 +281,7 @@ export default function TodoList({ todos, selectedId, onSelect }: TodoListProps)
       <div className="px-4 pb-2 flex-shrink-0">
         <span className="text-xs text-gray-500">
           {filteredTodos.length} 项
+          {statusFilter === 'pending' && ' · 拖拽可排序'}
         </span>
       </div>
 
@@ -179,16 +298,91 @@ export default function TodoList({ todos, selectedId, onSelect }: TodoListProps)
             )}
           </div>
         ) : (
-          filteredTodos.map((todo) => (
+          filteredTodos.map((todo, index) => (
             <TodoCard
               key={todo.id}
               todo={todo}
+              index={index}
               isSelected={todo.id === selectedId}
               onClick={() => onSelect(todo.id)}
+              draggable={todo.status === 'pending'}
+              isDragging={dragSourceId === todo.id}
+              dropPosition={getDropPosition(index)}
+              onDragStart={() => handleDragStart(todo.id)}
+              onDragOver={(e) => handleDragOver(e, index)}
+              onDrop={(e) => handleDrop(e)}
+              onDragEnd={handleDragEnd}
             />
           ))
         )}
       </div>
+
+      {/* Gantt Chart Modal */}
+      {showGanttModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-[90vw] max-w-4xl h-[80vh] flex flex-col overflow-hidden">
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800 flex-shrink-0">
+              <h2 className="text-sm font-semibold text-gray-100 flex items-center gap-2">
+                <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18v16H3zM7 8h6M7 12h10M7 16h4" />
+                </svg>
+                甘特图 · {DATE_FILTERS.find(f => f.value === dateFilter)?.label || '全部'}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowGanttModal(false)}
+                className="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-800 rounded-lg transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {/* Modal body */}
+            <div className="flex-1 overflow-hidden">
+              <GanttChart todos={filteredTodos} onSelect={onSelect} selectedId={selectedId} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reason Modal */}
+      {showReasonModal && (
+        <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 w-full max-w-sm shadow-2xl">
+            <h3 className="text-sm font-semibold text-gray-100 mb-3">
+              移动排序
+            </h3>
+            <p className="text-xs text-gray-400 mb-3">
+              可选：填写移动原因
+            </p>
+            <textarea
+              value={reasonText}
+              onChange={(e) => setReasonText(e.target.value)}
+              placeholder="移动原因（可不填）"
+              rows={3}
+              className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500/50 resize-none"
+            />
+            <div className="flex gap-2 mt-4">
+              <button
+                type="button"
+                onClick={cancelReorder}
+                className="flex-1 px-3 py-2 text-sm text-gray-400 bg-gray-700/50 rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={confirmReorder}
+                className="flex-1 px-3 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-500 transition-colors"
+              >
+                确认
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

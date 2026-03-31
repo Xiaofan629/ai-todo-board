@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/components/messagebubble.tsx","./src/components/todocard.tsx","./src/components/tododetail.tsx","./src/components/todolist.tsx"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/components/ganttchart.tsx","./src/components/messagebubble.tsx","./src/components/todocard.tsx","./src/components/tododetail.tsx","./src/components/todolist.tsx"],"version":"5.9.3"}

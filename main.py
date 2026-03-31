@@ -12,11 +12,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from agent_bridge import build_transcript_prompt, call_agent
-from config import SERVER_HOST, SERVER_PORT, OWNER_NAME, SPECIAL_USERID, ROOT_PATH
+from config import SERVER_HOST, SERVER_PORT, OWNER_NAME, SPECIAL_USERID, ROOT_PATH, PROJECT_BASE_DIR
 from database import (add_message, complete_todo, create_todo, get_messages,
-                      get_todo, get_todos, get_stats, init_db, set_todo_claude_session_id,
+                      get_todo, get_todos, get_stats, init_db,
+                      reorder_todo, set_todo_claude_session_id,
                       set_todo_processing,
-                      sync_todo_queue)
+                      sync_todo_queue, update_todo_title)
 from wecom_ws import WeComWS
 
 logging.basicConfig(level=logging.INFO,
@@ -24,6 +25,19 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("main")
 
 wecom = WeComWS()
+
+# System prompt prefix for plan-only mode
+PLAN_MODE_PREFIX = (
+    "你是一个代码分析助手，请严格按照以下规则工作：\n"
+    "1. **绝对不要修改任何文件**，只进行分析和规划\n"
+    f"2. 所有项目都在 {PROJECT_BASE_DIR} 目录下，请在该目录下查找和分析项目代码\n"
+    "3. 如果分析结果涉及代码改动，请严格按以下格式输出，每个项目一个条目：\n"
+    "   【项目名】\n"
+    "   原因：为什么要改\n"
+    "   改动点：具体改什么文件、改什么内容\n"
+    "\n"
+    "---\n"
+)
 
 
 def _extract_text_from_content(content) -> str:
@@ -154,7 +168,8 @@ async def _handle_wecom_message(data: dict):
         sender = userid
         content = raw_content
 
-    todo = await create_todo(title=sender, content=content, userid=sender,
+    title_text = content.split("\n")[0][:50] if content else sender
+    todo = await create_todo(title=title_text, content=content, userid=sender,
                              chatid=chatid, chattype=chattype)
     todo_id = todo["id"]
     await add_message(todo_id, "user", f"发送人：{sender}\n内容：{content}")
@@ -162,9 +177,32 @@ async def _handle_wecom_message(data: dict):
 
     try:
         prompt = f"发送人：{sender}\n内容：{content}"
-        full_response = await _run_agent_for_todo(todo_id, prompt)
+        full_response = await _run_agent_for_todo(todo_id, PLAN_MODE_PREFIX + prompt)
         final = full_response or "处理完成"
         await wecom.send_respond_msg(req_id, final, stream_id, finish=True)
+
+        # After CC finishes, ask it to summarize content as title
+        try:
+            summary_prompt = (
+                "请用不超过20个字总结以下内容的标题，只输出标题文本，不要加引号或其他格式：\n"
+                f"发送人：{sender}\n内容：{content}"
+            )
+            summary = ""
+            async for event in call_agent(PLAN_MODE_PREFIX + summary_prompt):
+                if event.get("type") == "assistant":
+                    text = _extract_event_text(event)
+                    if text:
+                        summary += text
+                elif event.get("type") == "result":
+                    text = (event.get("result") or "").strip()
+                    if text:
+                        summary = text
+            summary = summary.strip()[:50]
+            logger.info(f"Todo {todo_id} title summary: {summary!r}")
+            if summary:
+                await update_todo_title(todo_id, summary)
+        except Exception as e:
+            logger.warning(f"Failed to generate title for todo {todo_id}: {e}")
     except Exception as e:
         logger.error(f"Agent processing failed for todo {todo_id}: {e}")
         await add_message(todo_id, "assistant", f"处理失败: {str(e)}")
@@ -241,13 +279,13 @@ async def api_chat(todo_id: int, req: ChatRequest):
     existing = await get_messages(todo_id)
     claude_session_id = todo.get("claude_session_id") or None
     if claude_session_id:
-        prompt = req.content
+        prompt = PLAN_MODE_PREFIX + req.content
     else:
         history = []
         for message in existing:
             if message["role"] in {"user", "assistant"} and message["content"]:
                 history.append({"role": message["role"], "content": message["content"]})
-        prompt = build_transcript_prompt(history)
+        prompt = PLAN_MODE_PREFIX + build_transcript_prompt(history)
 
     full_response = await _run_agent_for_todo(
         todo_id,
@@ -270,6 +308,26 @@ async def api_complete_todo(todo_id: int):
     return result
 
 
+class ReorderRequest(BaseModel):
+    target_index: int
+    reason: str = ""
+    promote_to_doing: bool = False
+
+
+@app.post("/api/todos/{todo_id}/reorder")
+async def api_reorder_todo(todo_id: int, req: ReorderRequest):
+    """Move a todo to a specific position in the list."""
+    todo = await get_todo(todo_id)
+    if not todo:
+        raise HTTPException(404, "Todo not found")
+
+    success = await reorder_todo(todo_id, req.target_index, req.reason, promote_to_doing=req.promote_to_doing)
+    if not success:
+        raise HTTPException(400, "Failed to reorder")
+
+    return {"status": "ok"}
+
+
 @app.get("/api/stats")
 async def api_stats():
     return await get_stats()
@@ -277,7 +335,7 @@ async def api_stats():
 
 @app.get("/api/config")
 async def api_config():
-    return {"owner_name": OWNER_NAME}
+    return {"owner_name": OWNER_NAME, "project_base_dir": PROJECT_BASE_DIR}
 
 
 @app.get("/api/debug")

@@ -48,3 +48,11 @@ export async function completeTodo(todoId: number): Promise<{ status: string; ne
     method: 'POST',
   });
 }
+
+/** Reorder a todo to a specific position with optional reason. */
+export async function reorderTodo(todoId: number, targetIndex: number, reason?: string, promoteToDoing?: boolean): Promise<{ status: string }> {
+  return request<{ status: string }>(`/todos/${todoId}/reorder`, {
+    method: 'POST',
+    body: JSON.stringify({ target_index: targetIndex, reason: reason || '', promote_to_doing: promoteToDoing ?? false }),
+  });
+}
