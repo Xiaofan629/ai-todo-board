@@ -280,6 +280,15 @@ async def api_config():
     return {"owner_name": OWNER_NAME}
 
 
+@app.get("/api/debug")
+async def api_debug():
+    return {
+        "root_path": ROOT_PATH,
+        "static_dir_exists": STATIC_DIR.exists(),
+        "static_dir": str(STATIC_DIR)
+    }
+
+
 # --- Static Files ---
 STATIC_DIR = Path(__file__).parent / "frontend" / "dist"
 if STATIC_DIR.exists():
