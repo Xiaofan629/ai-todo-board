@@ -49,30 +49,40 @@
 
 1. 克隆项目
 ```bash
-git clone <repository-url>
+git clone https://github.com/Xiaofan629/ai-todo-board.git
 cd ai-todo-board
 ```
 
-2. 激活虚拟环境
+2. 创建并激活虚拟环境
 ```bash
+python3 -m venv venv
 source venv/bin/activate  # macOS/Linux
 # 或
 venv\Scripts\activate  # Windows
 ```
 
-3. 安装依赖
+3. 安装 Python 依赖
 ```bash
 pip install -r requirements.txt
-npm install
 ```
 
-### 配置企业微信机器人
-
-1. 在企业微信中创建机器人，获取 Webhook URL
-2. 配置环境变量：
+4. 安装前端依赖并构建
 ```bash
-export WECOM_WEBHOOK_URL="your-webhook-url"
-export CLAUDE_API_KEY="your-claude-api-key"
+cd frontend
+npm install
+npm run build
+cd ..
+```
+
+5. 配置环境变量
+```bash
+cp .env.example .env
+# 编辑 .env 文件，填入你的企业微信机器人配置
+```
+
+6. 启动服务
+```bash
+./start.sh
 ```
 
 ## 使用方式
@@ -81,7 +91,7 @@ export CLAUDE_API_KEY="your-claude-api-key"
 直接在企业微信群中 @机器人 发送任务描述即可
 
 ### 通过网页管理
-访问 `http://localhost:3000` 查看和管理所有任务
+访问 `http://localhost:9526` 查看和管理所有任务
 
 ## 技术栈
 
