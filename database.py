@@ -252,50 +252,57 @@ async def get_stats() -> dict:
     return stats
 
 
-async def reorder_todo(todo_id: int, target_index: int, reason: str = "", promote_to_doing: bool = False) -> bool:
-    """Move a todo to a specific position by updating sort_order.
-
-    After moving, rebalances statuses so the first non-completed todo is 'doing'.
-    The promote_to_doing flag is kept for API compatibility but the rebalance
-    handles status assignment automatically based on sort_order.
-    """
+async def reorder_todo(todo_id: int, reason: str = "", promote_to_doing: bool = False,
+                       target_index: Optional[int] = None, target_todo_id: Optional[int] = None,
+                       position: str = "bottom") -> bool:
+    """Move a todo to a new position and rewrite the open queue order deterministically."""
     db = await get_db()
     now = datetime.now().isoformat()
 
-    # Get the todo being moved
-    todo = await db.execute_fetchall("SELECT * FROM todos WHERE id = ?", (todo_id,))
+    todo = await db.execute_fetchall("SELECT id, status FROM todos WHERE id = ?", (todo_id,))
     if not todo:
         await db.close()
         return False
 
-    # Get ALL non-completed todos ordered by sort_order to calculate new position
     all_rows = await db.execute_fetchall(
-        "SELECT id, sort_order FROM todos WHERE status != 'completed' AND status != 'failed' "
+        "SELECT id FROM todos WHERE status != 'completed' AND status != 'failed' "
         "ORDER BY sort_order ASC, created_at ASC, id ASC"
     )
+    current_ids = [row["id"] for row in all_rows]
+    if todo_id not in current_ids:
+        await db.close()
+        return False
 
-    # Filter out the moved item to get siblings
-    siblings = [(r["id"], r["sort_order"]) for r in all_rows if r["id"] != todo_id]
+    next_ids = [current_id for current_id in current_ids if current_id != todo_id]
 
-    # Clamp target_index
-    target_index = max(0, min(target_index, len(siblings)))
-
-    # Calculate new sort_order as average of surrounding items
-    if len(siblings) == 0:
-        new_order = 0
-    elif target_index == 0:
-        new_order = siblings[0][1] - 1000
-    elif target_index >= len(siblings):
-        new_order = siblings[-1][1] + 1000
+    if target_todo_id is not None:
+        if target_todo_id == todo_id:
+            await db.close()
+            return True
+        if target_todo_id not in next_ids:
+            await db.close()
+            return False
+        anchor_index = next_ids.index(target_todo_id)
+        insert_at = anchor_index if position == "top" else anchor_index + 1
     else:
-        new_order = (siblings[target_index - 1][1] + siblings[target_index][1]) / 2
+        if target_index is None:
+            await db.close()
+            return False
+        insert_at = max(0, min(target_index, len(next_ids)))
+
+    next_ids.insert(insert_at, todo_id)
+
+    if next_ids != current_ids:
+        await db.executemany(
+            "UPDATE todos SET sort_order = ?, updated_at = ? WHERE id = ?",
+            [(index * 1000, now, current_id) for index, current_id in enumerate(next_ids)],
+        )
 
     await db.execute(
-        "UPDATE todos SET sort_order = ?, reorder_reason = ?, updated_at = ? WHERE id = ?",
-        (int(new_order), reason.strip(), now, todo_id),
+        "UPDATE todos SET reorder_reason = ?, updated_at = ? WHERE id = ?",
+        (reason.strip(), now, todo_id),
     )
 
-    # Rebalance: first non-completed todo by sort_order becomes 'doing', rest 'pending'
     await _rebalance_open_todos(db)
     await db.commit()
     await db.close()

@@ -135,6 +135,7 @@ export default function App() {
             todos={todos}
             selectedId={selectedId}
             onSelect={handleSelectTodo}
+            onTodosChanged={refreshData}
           />
         </div>
 

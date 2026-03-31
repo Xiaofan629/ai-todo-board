@@ -49,10 +49,21 @@ export async function completeTodo(todoId: number): Promise<{ status: string; ne
   });
 }
 
-/** Reorder a todo to a specific position with optional reason. */
-export async function reorderTodo(todoId: number, targetIndex: number, reason?: string, promoteToDoing?: boolean): Promise<{ status: string }> {
+/** Reorder a todo relative to another visible card. */
+export async function reorderTodo(
+  todoId: number,
+  targetTodoId: number,
+  position: 'top' | 'bottom',
+  reason?: string,
+  promoteToDoing?: boolean,
+): Promise<{ status: string }> {
   return request<{ status: string }>(`/todos/${todoId}/reorder`, {
     method: 'POST',
-    body: JSON.stringify({ target_index: targetIndex, reason: reason || '', promote_to_doing: promoteToDoing ?? false }),
+    body: JSON.stringify({
+      target_todo_id: targetTodoId,
+      position,
+      reason: reason || '',
+      promote_to_doing: promoteToDoing ?? false,
+    }),
   });
 }

@@ -55,15 +55,16 @@
 
 ### 主界面 - 任务列表
 
-![任务列表](docs/screenshots/todo-list.png)
-
-### 任务会话详情
-
-![任务会话详情](docs/screenshots/todo-detail.png)
+![任务列表](https://raw.githubusercontent.com/Xiaofan629/my-image-host/refs/heads/main/1d1849b7601bc1362a9f7b1ee960b15d.png)
 
 ### 甘特图
 
-![甘特图](docs/screenshots/gantt-chart.png)
+![甘特图](https://raw.githubusercontent.com/Xiaofan629/my-image-host/refs/heads/main/f29efd7c189532f769ac0ab7ac2cd45d.png)
+
+
+### 甘特图下载图片
+
+![甘特图下载图片](https://raw.githubusercontent.com/Xiaofan629/my-image-host/refs/heads/main/7bf82ae14e2315ff8f24103d89918dd2.png)
 
 <!-- 截图预留位结束 -->
 

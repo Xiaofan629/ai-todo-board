@@ -8,6 +8,7 @@ interface TodoListProps {
   todos: Todo[];
   selectedId: number | null;
   onSelect: (id: number) => void;
+  onTodosChanged: () => Promise<void>;
 }
 
 const STATUS_FILTERS: { value: TodoStatus | 'all' | 'not_done'; label: string }[] = [
@@ -24,7 +25,7 @@ const DATE_FILTERS: { value: number; label: string }[] = [
   { value: 0, label: '全部' },
 ];
 
-export default function TodoList({ todos, selectedId, onSelect }: TodoListProps) {
+export default function TodoList({ todos, selectedId, onSelect, onTodosChanged }: TodoListProps) {
   const [statusFilter, setStatusFilter] = useState<TodoStatus | 'all' | 'not_done'>('not_done');
   const [dateFilter, setDateFilter] = useState(7);
   const [searchQuery, setSearchQuery] = useState('');
@@ -38,7 +39,12 @@ export default function TodoList({ todos, selectedId, onSelect }: TodoListProps)
   // Reason modal
   const [showReasonModal, setShowReasonModal] = useState(false);
   const [reasonText, setReasonText] = useState('');
-  const [pendingReorder, setPendingReorder] = useState<{ todoId: number; targetIndex: number; promoteToDoing: boolean } | null>(null);
+  const [pendingReorder, setPendingReorder] = useState<{
+    todoId: number;
+    targetTodoId: number;
+    position: 'top' | 'bottom';
+    promoteToDoing: boolean;
+  } | null>(null);
 
   // Track the drag target index calculated on last dragOver
   const dropTargetRef = useRef<{ index: number; position: 'top' | 'bottom' } | null>(null);
@@ -78,6 +84,11 @@ export default function TodoList({ todos, selectedId, onSelect }: TodoListProps)
     return result;
   }, [todos, statusFilter, dateFilter, searchQuery]);
 
+  const openTodos = useMemo(
+    () => todos.filter((todo) => todo.status !== 'done'),
+    [todos],
+  );
+
   const handleDragStart = useCallback((todoId: number) => {
     setDragSourceId(todoId);
     setDropIndicator(null);
@@ -113,29 +124,32 @@ export default function TodoList({ todos, selectedId, onSelect }: TodoListProps)
     if (sourceId === null || !target) return;
 
     const sourceTodo = filteredTodos.find((t) => t.id === sourceId);
+    const targetTodo = filteredTodos[target.index];
     if (!sourceTodo) return;
-    const sourceIndex = filteredTodos.findIndex((t) => t.id === sourceId);
+    if (!targetTodo || targetTodo.id === sourceId) return;
 
-    // Calculate the target position in the filtered array
-    let targetIndex = target.position === 'top' ? target.index : target.index + 1;
-    // If dragging down, subtract 1 because removing the source shifts everything up
-    if (sourceIndex < targetIndex) {
-      targetIndex -= 1;
-    }
-    // Same position, no-op
-    if (sourceIndex === targetIndex) return;
+    const currentOpenIds = openTodos.map((todo) => todo.id);
+    const nextOpenIds = currentOpenIds.filter((id) => id !== sourceId);
+    const anchorIndex = nextOpenIds.findIndex((id) => id === targetTodo.id);
+    if (anchorIndex === -1) return;
 
-    // Determine if this should promote to doing:
-    // The drop target is the first doing item, and we're dropping above it (position='top')
-    // Or the filtered list has a doing item at index 0, and targetIndex ends up 0
-    const firstDoingIndex = filteredTodos.findIndex((t) => t.status === 'doing');
-    const dropBeforeDoing = firstDoingIndex !== -1 && targetIndex <= firstDoingIndex;
-    const promoteToDoing = sourceTodo.status === 'pending' && dropBeforeDoing;
+    const insertAt = target.position === 'top' ? anchorIndex : anchorIndex + 1;
+    const reorderedIds = [...nextOpenIds];
+    reorderedIds.splice(insertAt, 0, sourceId);
+    const orderChanged = reorderedIds.some((id, index) => id !== currentOpenIds[index]);
+    if (!orderChanged) return;
 
-    setPendingReorder({ todoId: sourceId, targetIndex, promoteToDoing });
+    const promoteToDoing = sourceTodo.status === 'pending' && insertAt === 0;
+
+    setPendingReorder({
+      todoId: sourceId,
+      targetTodoId: targetTodo.id,
+      position: target.position,
+      promoteToDoing,
+    });
     setReasonText('');
     setShowReasonModal(true);
-  }, [dragSourceId, filteredTodos]);
+  }, [dragSourceId, filteredTodos, openTodos]);
 
   const handleDragEnd = useCallback(() => {
     setDragSourceId(null);
@@ -146,13 +160,20 @@ export default function TodoList({ todos, selectedId, onSelect }: TodoListProps)
   const confirmReorder = async () => {
     if (!pendingReorder) return;
     try {
-      await reorderTodo(pendingReorder.todoId, pendingReorder.targetIndex, reasonText, pendingReorder.promoteToDoing);
+      await reorderTodo(
+        pendingReorder.todoId,
+        pendingReorder.targetTodoId,
+        pendingReorder.position,
+        reasonText,
+        pendingReorder.promoteToDoing,
+      );
+      await onTodosChanged();
+      setShowReasonModal(false);
+      setPendingReorder(null);
+      setReasonText('');
     } catch (err) {
       console.error('Failed to reorder:', err);
     }
-    setShowReasonModal(false);
-    setPendingReorder(null);
-    setReasonText('');
   };
 
   const cancelReorder = () => {

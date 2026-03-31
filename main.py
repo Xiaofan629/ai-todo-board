@@ -4,7 +4,7 @@ import logging
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -309,7 +309,9 @@ async def api_complete_todo(todo_id: int):
 
 
 class ReorderRequest(BaseModel):
-    target_index: int
+    target_index: Optional[int] = None
+    target_todo_id: Optional[int] = None
+    position: Literal["top", "bottom"] = "bottom"
     reason: str = ""
     promote_to_doing: bool = False
 
@@ -321,7 +323,14 @@ async def api_reorder_todo(todo_id: int, req: ReorderRequest):
     if not todo:
         raise HTTPException(404, "Todo not found")
 
-    success = await reorder_todo(todo_id, req.target_index, req.reason, promote_to_doing=req.promote_to_doing)
+    success = await reorder_todo(
+        todo_id,
+        req.reason,
+        promote_to_doing=req.promote_to_doing,
+        target_index=req.target_index,
+        target_todo_id=req.target_todo_id,
+        position=req.position,
+    )
     if not success:
         raise HTTPException(400, "Failed to reorder")
 
