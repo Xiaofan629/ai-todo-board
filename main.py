@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import List, Literal, Optional
 
@@ -140,6 +140,19 @@ async def _run_agent_for_todo(todo_id: int, prompt: str,
     return full_response
 
 
+async def _stream_keepalive(req_id: str, stream_id: str, interval: int = 25):
+    """Periodically send stream messages to prevent WeChat stream timeout."""
+    count = 1
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await wecom.send_respond_msg(
+                req_id, f"还在处理中，请稍候...({count})", stream_id)
+            count += 1
+        except Exception:
+            break
+
+
 async def _handle_wecom_message(data: dict):
     body = data.get("body", {})
     userid = body.get("from", {}).get("userid", "unknown")
@@ -175,13 +188,16 @@ async def _handle_wecom_message(data: dict):
     await add_message(todo_id, "user", f"发送人：{sender}\n内容：{content}")
     await wecom.send_respond_msg(req_id, "正在处理，请稍候...", stream_id)
 
+    # Start keepalive task to prevent stream timeout during long CC processing
+    keepalive_task = asyncio.create_task(
+        _stream_keepalive(req_id, stream_id, interval=25))
+
     try:
         prompt = f"发送人：{sender}\n内容：{content}"
         full_response = await _run_agent_for_todo(todo_id, PLAN_MODE_PREFIX + prompt)
         final = full_response or "处理完成"
-        await wecom.send_respond_msg(req_id, final, stream_id, finish=True)
 
-        # After CC finishes, ask it to summarize content as title
+        # Also send keepalive during title summarization
         try:
             summary_prompt = (
                 "请用不超过20个字总结以下内容的标题，只输出标题文本，不要加引号或其他格式：\n"
@@ -207,11 +223,17 @@ async def _handle_wecom_message(data: dict):
         logger.error(f"Agent processing failed for todo {todo_id}: {e}")
         await add_message(todo_id, "assistant", f"处理失败: {str(e)}")
         await sync_todo_queue(todo_id)
-        try:
-            await wecom.send_respond_msg(req_id, f"处理失败: {str(e)}",
-                                         stream_id, finish=True)
-        except Exception:
-            pass
+        final = f"处理失败: {str(e)}"
+    finally:
+        keepalive_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await keepalive_task
+
+    # Send final response
+    try:
+        await wecom.send_respond_msg(req_id, final, stream_id, finish=True)
+    except Exception:
+        pass
 
 
 async def _handle_wecom_event(data: dict):

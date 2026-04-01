@@ -104,10 +104,17 @@ async def create_todo(title: str, content: str, userid: str = "",
                       chatid: str = "", chattype: str = "single") -> dict:
     db = await get_db()
     now = datetime.now().isoformat()
+    # Place the new todo at the end of the open queue
+    max_row = await db.execute_fetchall(
+        "SELECT MAX(sort_order) as max_so FROM todos "
+        "WHERE status != 'completed' AND status != 'failed'"
+    )
+    max_so = max_row[0]["max_so"] if max_row and max_row[0]["max_so"] is not None else -1000
+    sort_order = max_so + 1000
     cursor = await db.execute(
-        "INSERT INTO todos (title, content, userid, chatid, chattype, claude_session_id, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (title, content, userid, chatid, chattype, "", now, now)
+        "INSERT INTO todos (title, content, userid, chatid, chattype, claude_session_id, sort_order, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (title, content, userid, chatid, chattype, "", sort_order, now, now)
     )
     todo_id = cursor.lastrowid
     status_map = await _rebalance_open_todos(db)
@@ -116,7 +123,7 @@ async def create_todo(title: str, content: str, userid: str = "",
     return _map_todo({"id": todo_id, "title": title, "content": content,
             "status": status_map.get(todo_id, "pending"),
             "userid": userid, "chatid": chatid, "chattype": chattype,
-            "claude_session_id": "", "is_processing": False, "sort_order": 0,
+            "claude_session_id": "", "is_processing": False, "sort_order": sort_order,
             "created_at": now, "updated_at": now})
 
 

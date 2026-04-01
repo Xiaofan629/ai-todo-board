@@ -90,7 +90,7 @@ function buildGanttData(todos: Todo[]) {
 
     return {
       todoId: todo.id,
-      title: todo.content || todo.title || `Todo #${todo.id}`,
+      title: todo.title || todo.content || `Todo #${todo.id}`,
       status: todo.status,
       startTime,
       endTime,

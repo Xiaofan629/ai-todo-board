@@ -53,6 +53,10 @@
 
 <!-- 截图预留位 -->
 
+## 企业微信对话
+
+![企业微信对话](https://raw.githubusercontent.com/Xiaofan629/my-image-host/refs/heads/main/270482f0d90451fec8e72f8fa7286929.png)
+
 ### 主界面 - 任务列表
 
 ![任务列表](https://raw.githubusercontent.com/Xiaofan629/my-image-host/refs/heads/main/1d1849b7601bc1362a9f7b1ee960b15d.png)
