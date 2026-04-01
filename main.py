@@ -140,7 +140,7 @@ async def _run_agent_for_todo(todo_id: int, prompt: str,
     return full_response
 
 
-async def _stream_keepalive(req_id: str, stream_id: str, interval: int = 25):
+async def _stream_keepalive(req_id: str, stream_id: str, interval: int = 15):
     """Periodically send stream messages to prevent WeChat stream timeout."""
     count = 1
     while True:
@@ -148,8 +148,10 @@ async def _stream_keepalive(req_id: str, stream_id: str, interval: int = 25):
         try:
             await wecom.send_respond_msg(
                 req_id, f"还在处理中，请稍候...({count})", stream_id)
+            logger.info("Stream keepalive sent for req_id=%s count=%s", req_id, count)
             count += 1
-        except Exception:
+        except Exception as exc:
+            logger.warning("Stream keepalive failed for req_id=%s: %s", req_id, exc)
             break
 
 
@@ -190,7 +192,7 @@ async def _handle_wecom_message(data: dict):
 
     # Start keepalive task to prevent stream timeout during long CC processing
     keepalive_task = asyncio.create_task(
-        _stream_keepalive(req_id, stream_id, interval=25))
+        _stream_keepalive(req_id, stream_id, interval=15))
 
     try:
         prompt = f"发送人：{sender}\n内容：{content}"
@@ -232,8 +234,9 @@ async def _handle_wecom_message(data: dict):
     # Send final response
     try:
         await wecom.send_respond_msg(req_id, final, stream_id, finish=True)
-    except Exception:
-        pass
+        logger.info("Final response sent for todo %s req_id=%s", todo_id, req_id)
+    except Exception as exc:
+        logger.error("Failed to send final response for todo %s req_id=%s: %s", todo_id, req_id, exc)
 
 
 async def _handle_wecom_event(data: dict):
