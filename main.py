@@ -198,29 +198,6 @@ async def _handle_wecom_message(data: dict):
         prompt = f"发送人：{sender}\n内容：{content}"
         full_response = await _run_agent_for_todo(todo_id, PLAN_MODE_PREFIX + prompt)
         final = full_response or "处理完成"
-
-        # Also send keepalive during title summarization
-        try:
-            summary_prompt = (
-                "请用不超过20个字总结以下内容的标题，只输出标题文本，不要加引号或其他格式：\n"
-                f"发送人：{sender}\n内容：{content}"
-            )
-            summary = ""
-            async for event in call_agent(PLAN_MODE_PREFIX + summary_prompt):
-                if event.get("type") == "assistant":
-                    text = _extract_event_text(event)
-                    if text:
-                        summary += text
-                elif event.get("type") == "result":
-                    text = (event.get("result") or "").strip()
-                    if text:
-                        summary = text
-            summary = summary.strip()[:50]
-            logger.info(f"Todo {todo_id} title summary: {summary!r}")
-            if summary:
-                await update_todo_title(todo_id, summary)
-        except Exception as e:
-            logger.warning(f"Failed to generate title for todo {todo_id}: {e}")
     except Exception as e:
         logger.error(f"Agent processing failed for todo {todo_id}: {e}")
         await add_message(todo_id, "assistant", f"处理失败: {str(e)}")
@@ -231,12 +208,36 @@ async def _handle_wecom_message(data: dict):
         with suppress(asyncio.CancelledError):
             await keepalive_task
 
-    # Send final response
+    # Send final response before title summarization so user gets reply ASAP
     try:
         await wecom.send_respond_msg(req_id, final, stream_id, finish=True)
         logger.info("Final response sent for todo %s req_id=%s", todo_id, req_id)
     except Exception as exc:
         logger.error("Failed to send final response for todo %s req_id=%s: %s", todo_id, req_id, exc)
+
+    # Summarize title in background based only on user's original content
+    try:
+        summary_prompt = (
+            "你是一个标题总结助手。请用不超过20个字总结以下用户消息的标题，"
+            "只输出标题文本，不要加引号或其他格式。\n"
+            f"发送人：{sender}\n内容：{content}"
+        )
+        summary = ""
+        async for event in call_agent(summary_prompt):
+            if event.get("type") == "assistant":
+                text = _extract_event_text(event)
+                if text:
+                    summary += text
+            elif event.get("type") == "result":
+                text = (event.get("result") or "").strip()
+                if text:
+                    summary = text
+        summary = summary.strip()[:50]
+        logger.info(f"Todo {todo_id} title summary: {summary!r}")
+        if summary:
+            await update_todo_title(todo_id, summary)
+    except Exception as e:
+        logger.warning(f"Failed to generate title for todo {todo_id}: {e}")
 
 
 async def _handle_wecom_event(data: dict):
