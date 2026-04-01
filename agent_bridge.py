@@ -160,6 +160,7 @@ async def call_agent(prompt: str, resume_session_id: Optional[str] = None) -> As
             cwd=str(Path(__file__).parent),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            limit=16 * 1024 * 1024,  # 16MB, 防止长输出触发 LimitOverrunError
         )
     except FileNotFoundError:
         logger.error("Claude CLI not found when starting: configured=%s resolved=%s",
