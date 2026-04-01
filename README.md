@@ -55,7 +55,7 @@
 
 ## 企业微信对话
 
-![企业微信对话](https://raw.githubusercontent.com/Xiaofan629/my-image-host/refs/heads/main/270482f0d90451fec8e72f8fa7286929.png)
+![企业微信对话](https://raw.githubusercontent.com/Xiaofan629/my-image-host/refs/heads/main/a666bf9822e1bf3cc881f95c0e67ec76.jpg)
 
 ### 主界面 - 任务列表
 
