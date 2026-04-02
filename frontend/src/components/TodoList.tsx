@@ -52,7 +52,10 @@ export default function TodoList({ todos, selectedId, onSelect, onTodosChanged }
   useEffect(() => {
     fetch('./api/config')
       .then(res => res.json())
-      .then(data => setOwnerName(data.owner_name))
+      .then(data => {
+        setOwnerName(data.owner_name);
+        document.title = `${data.owner_name}的TODOs`;
+      })
       .catch(() => {});
   }, []);
 
