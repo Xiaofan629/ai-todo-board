@@ -48,3 +48,13 @@ export interface ChatResponse {
   status: string;
   response: string;
 }
+
+// --- Time segment types ---
+
+export interface TimeSegment {
+  id: number;
+  todo_id: number;
+  status: string;
+  started_at: string;
+  ended_at: string | null;
+}

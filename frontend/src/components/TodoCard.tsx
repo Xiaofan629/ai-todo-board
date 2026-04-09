@@ -5,6 +5,7 @@ interface TodoCardProps {
   index: number;
   isSelected: boolean;
   onClick: () => void;
+  onStartDoing?: (todoId: number) => void;
   draggable?: boolean;
   /** 'top' = insertion line above, 'bottom' = line below, null = none */
   dropPosition?: 'top' | 'bottom' | null;
@@ -66,6 +67,7 @@ export default function TodoCard({
   index,
   isSelected,
   onClick,
+  onStartDoing,
   draggable,
   dropPosition,
   isDragging,
@@ -153,14 +155,25 @@ export default function TodoCard({
               </span>
             )}
           </div>
-          <span
-            className={`
-              text-[10px] px-1.5 py-0.5 rounded-full font-medium uppercase tracking-wide
-              ${cfg.bg} ${cfg.border} border
-            `}
-          >
-            {cfg.label}
-          </span>
+          <div className="flex items-center gap-1.5">
+            {todo.status === 'pending' && onStartDoing && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onStartDoing(todo.id); }}
+                className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-blue-600/20 text-blue-300 border border-blue-500/30 hover:bg-blue-600/40"
+              >
+                开始处理
+              </button>
+            )}
+            <span
+              className={`
+                text-[10px] px-1.5 py-0.5 rounded-full font-medium uppercase tracking-wide
+                ${cfg.bg} ${cfg.border} border
+              `}
+            >
+              {cfg.label}
+            </span>
+          </div>
         </div>
       </button>
 

@@ -1,20 +1,35 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { Todo, Message } from '../types';
-import { fetchMessages, sendChat, completeTodo } from '../api';
+import { fetchMessages, sendChat, completeTodo, completeTodoFromPending, deleteTodo, updateTodoTitle } from '../api';
 import MessageBubble from './MessageBubble';
 
 interface TodoDetailProps {
   todo: Todo;
   onBack: () => void;
+  onDeleted?: () => void;
+  onTitleChanged?: () => void;
 }
 
-export default function TodoDetail({ todo, onBack }: TodoDetailProps) {
+export default function TodoDetail({ todo, onBack, onDeleted, onTitleChanged }: TodoDetailProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [showScrollTopBtn, setShowScrollTopBtn] = useState(false);
+  const [modelName, setModelName] = useState('AI');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [editTitleText, setEditTitleText] = useState('');
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch('./api/config')
+      .then(res => res.json())
+      .then(data => setModelName(data.llm_model || 'AI'))
+      .catch(() => {});
+  }, []);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -28,11 +43,19 @@ export default function TodoDetail({ todo, onBack }: TodoDetailProps) {
     }
   }, []);
 
+  const scrollToTop = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (el) {
+      el.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, []);
+
   const checkScrollPosition = useCallback(() => {
     const el = scrollContainerRef.current;
     if (el) {
       const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
       setShowScrollBtn(!nearBottom);
+      setShowScrollTopBtn(el.scrollTop > 400);
     }
   }, []);
 
@@ -98,7 +121,7 @@ export default function TodoDetail({ todo, onBack }: TodoDetailProps) {
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.key === 'Enter' && e.shiftKey) {
         e.preventDefault();
         handleSend();
       }
@@ -109,12 +132,28 @@ export default function TodoDetail({ todo, onBack }: TodoDetailProps) {
   const handleComplete = useCallback(async () => {
     if (!todo || todo.status === 'done') return;
     try {
-      await completeTodo(todo.id);
+      if (todo.status === 'pending') {
+        await completeTodoFromPending(todo.id);
+      } else {
+        await completeTodo(todo.id);
+      }
       await loadMessages();
     } catch (err) {
       setError(err instanceof Error ? err.message : '完成操作失败');
     }
   }, [todo, loadMessages]);
+
+  const handleDelete = useCallback(async () => {
+    if (!todo) return;
+    try {
+      await deleteTodo(todo.id);
+      setShowDeleteConfirm(false);
+      onDeleted?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '删除失败');
+      setShowDeleteConfirm(false);
+    }
+  }, [todo, onDeleted]);
 
   const statusConfig: Record<string, { color: string; label: string }> = {
     pending: { color: 'bg-yellow-400/20 text-yellow-300 border-yellow-500/30', label: '待处理' },
@@ -140,9 +179,38 @@ export default function TodoDetail({ todo, onBack }: TodoDetailProps) {
           </button>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-semibold text-gray-100 truncate">
-                {todo.title || `Todo #${todo.id}`}
-              </h2>
+              {editingTitle ? (
+                <input
+                  ref={titleInputRef}
+                  value={editTitleText}
+                  onChange={(e) => setEditTitleText(e.target.value)}
+                  onBlur={async () => {
+                    const trimmed = editTitleText.trim();
+                    if (trimmed && trimmed !== todo.title) {
+                      await updateTodoTitle(todo.id, trimmed);
+                      onTitleChanged?.();
+                    }
+                    setEditingTitle(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') titleInputRef.current?.blur();
+                    if (e.key === 'Escape') { setEditingTitle(false); setEditTitleText(''); }
+                  }}
+                  className="text-base font-semibold text-gray-100 bg-gray-800 border border-blue-500/50 rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-blue-500/30 w-full"
+                  autoFocus
+                />
+              ) : (
+                <h2
+                  className="text-base font-semibold text-gray-100 truncate cursor-pointer hover:text-blue-300 transition-colors group flex items-center gap-1"
+                  onClick={() => { setEditTitleText(todo.title || ''); setEditingTitle(true); }}
+                  title="点击编辑标题"
+                >
+                  {todo.title || `Todo #${todo.id}`}
+                  <svg className="w-3.5 h-3.5 text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                  </svg>
+                </h2>
+              )}
               {sc && (
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${sc.color}`}>
                   {sc.label}
@@ -154,7 +222,7 @@ export default function TodoDetail({ todo, onBack }: TodoDetailProps) {
             )}
           </div>
 
-          {todo.status === 'doing' && (
+          {(todo.status === 'doing' || todo.status === 'pending') && (
             <button
               type="button"
               onClick={handleComplete}
@@ -173,6 +241,17 @@ export default function TodoDetail({ todo, onBack }: TodoDetailProps) {
           >
             <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
+            </svg>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowDeleteConfirm(true)}
+            className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-600 hover:text-red-400 transition-colors"
+            title="删除"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
             </svg>
           </button>
         </div>
@@ -237,7 +316,7 @@ export default function TodoDetail({ todo, onBack }: TodoDetailProps) {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
               </svg>
-              <span className="text-xs text-blue-200">Claude Code 正在执行，暂时不能发送新消息</span>
+              <span className="text-xs text-blue-200">{modelName} 正在处理中，请稍候...</span>
             </div>
           </div>
         )}
@@ -254,6 +333,19 @@ export default function TodoDetail({ todo, onBack }: TodoDetailProps) {
             </svg>
           </button>
         )}
+
+        {showScrollTopBtn && (
+          <button
+            type="button"
+            onClick={scrollToTop}
+            className="sticky top-2 left-1/2 -translate-x-1/2 flex items-center justify-center w-9 h-9 rounded-full bg-gray-700/90 border border-gray-600/50 text-gray-300 hover:bg-gray-600 hover:text-white shadow-lg transition-all animate-fade-in"
+            title="回到顶部"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Chat input */}
@@ -267,12 +359,12 @@ export default function TodoDetail({ todo, onBack }: TodoDetailProps) {
               onKeyDown={handleKeyDown}
               placeholder={
                 remoteProcessing
-                  ? 'Claude Code 正在执行，等待当前对话完成...'
+                  ? `${modelName} 正在处理中，请稍候...`
                   : sending
                     ? '等待回复...'
                     : todo.status === 'done'
                       ? '该会话已完成，无法继续发送消息'
-                      : '输入消息 (Enter 发送, Shift+Enter 换行)...'
+                      : '输入消息... (Shift+Enter 发送)'
               }
               disabled={inputDisabled}
               rows={1}
@@ -304,6 +396,34 @@ export default function TodoDetail({ todo, onBack }: TodoDetailProps) {
           </button>
         </div>
       </div>
+
+      {/* Delete confirmation */}
+      {showDeleteConfirm && (
+        <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 w-full max-w-sm shadow-2xl">
+            <h3 className="text-sm font-semibold text-gray-100 mb-2">确认删除</h3>
+            <p className="text-xs text-gray-400 mb-4">
+              删除后无法恢复，该 Todo 及其所有消息将被永久删除。
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 px-3 py-2 text-sm text-gray-400 bg-gray-700/50 rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="flex-1 px-3 py-2 text-sm text-white bg-red-600 rounded-lg hover:bg-red-500 transition-colors"
+              >
+                删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { Todo, Message, Stats, ChatResponse, TodoStatus } from './types';
+import type { Todo, Message, Stats, ChatResponse, TodoStatus, TimeSegment } from './types';
 
 const API_BASE = './api';
 
@@ -65,5 +65,49 @@ export async function reorderTodo(
       reason: reason || '',
       promote_to_doing: promoteToDoing ?? false,
     }),
+  });
+}
+
+/** Fetch time segments for a specific todo. */
+export async function fetchTimeSegments(todoId: number): Promise<TimeSegment[]> {
+  return request<TimeSegment[]>(`/todos/${todoId}/time-segments`);
+}
+
+/** Fetch time segments for multiple todos. */
+export async function fetchAllTimeSegments(todoIds: number[]): Promise<Record<number, TimeSegment[]>> {
+  if (todoIds.length === 0) return {};
+  return request<Record<number, TimeSegment[]>>(`/time-segments?todo_ids=${todoIds.join(',')}`);
+}
+
+/** Move a pending todo to the top of the queue and promote it to doing. */
+export async function startDoingTodo(todoId: number, reason?: string): Promise<{ status: string }> {
+  return request<{ status: string }>(`/todos/${todoId}/reorder`, {
+    method: 'POST',
+    body: JSON.stringify({
+      target_index: 0,
+      position: 'top',
+      reason: reason || '',
+      promote_to_doing: true,
+    }),
+  });
+}
+
+/** Mark a pending todo as completed with timing logic. */
+export async function completeTodoFromPending(todoId: number): Promise<{ status: string; next_doing_id?: number }> {
+  return request<{ status: string; next_doing_id?: number }>(`/todos/${todoId}/complete-from-pending`, {
+    method: 'POST',
+  });
+}
+
+/** Delete a todo permanently. */
+export async function deleteTodo(todoId: number): Promise<{ status: string }> {
+  return request<{ status: string }>(`/todos/${todoId}`, { method: 'DELETE' });
+}
+
+/** Update a todo's title. */
+export async function updateTodoTitle(todoId: number, title: string): Promise<{ status: string }> {
+  return request<{ status: string }>(`/todos/${todoId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ title }),
   });
 }

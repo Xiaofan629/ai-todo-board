@@ -3,29 +3,29 @@ import contextlib
 import json
 import logging
 import uuid
-from typing import Callable, Optional
+from typing import Optional
 
 import websockets
 from websockets.asyncio.client import ClientConnection
 from websockets.protocol import State
 
+from bot_base import BotBase
 from config import WECOM_BOT_ID, WECOM_BOT_SECRET
 
 logger = logging.getLogger("wecom")
 
 
-class WeComWS:
+class WeComWS(BotBase):
     WSS_URL = "wss://openws.work.weixin.qq.com"
     HEARTBEAT_INTERVAL = 30
 
     def __init__(self):
+        super().__init__()
         self.ws: Optional[ClientConnection] = None
         self._heartbeat_task: Optional[asyncio.Task] = None
         self._running = False
         self._retry_delay = 1
         self._send_lock = asyncio.Lock()
-        self.on_message: Optional[Callable] = None
-        self.on_event: Optional[Callable] = None
 
     def _req_id(self) -> str:
         return str(uuid.uuid4())
@@ -161,6 +161,10 @@ class WeComWS:
             "body": {"msgtype": "text", "text": {"content": text}}
         }
         await self._send_json(ws, msg)
+
+    async def send_text_message(self, chat_id: str, text: str):
+        """WeCom sends via WebSocket streaming, not REST."""
+        raise NotImplementedError("WeCom uses send_respond_msg for streaming")
 
     async def stop(self):
         self._running = False

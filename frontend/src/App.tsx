@@ -54,6 +54,13 @@ export default function App() {
     setShowDetail(false);
   }, []);
 
+  /** Handle todo deleted — go back and refresh. */
+  const handleDeleted = useCallback(() => {
+    setSelectedId(null);
+    setShowDetail(false);
+    refreshData();
+  }, [refreshData]);
+
   const selectedTodo = selectedId ? todos.find((t) => t.id === selectedId) ?? null : null;
 
   // --- Loading state ---
@@ -151,6 +158,8 @@ export default function App() {
               key={selectedTodo.id}
               todo={selectedTodo}
               onBack={handleBack}
+              onDeleted={handleDeleted}
+              onTitleChanged={refreshData}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center">

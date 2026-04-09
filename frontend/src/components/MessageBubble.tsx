@@ -1,4 +1,10 @@
+import { useState, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import type { Message } from '../types';
+import type { Components } from 'react-markdown';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -154,6 +160,147 @@ function blockBody(block: JsonRecord): string {
   return stringifyValue(block);
 }
 
+// --- Copy button ---
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // fallback
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  }, [text]);
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-gray-600 text-gray-400 hover:text-gray-200"
+      title="复制"
+    >
+      {copied ? (
+        <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+        </svg>
+      ) : (
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+// --- Code block with copy button ---
+
+function CodeBlock({ language, children }: { language: string; children: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(children);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = children;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, [children]);
+
+  return (
+    <div className="relative group/code">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-[#282c34] rounded-t-lg border-b border-gray-700/50">
+        <span className="text-[11px] text-gray-400 font-mono">{language || 'text'}</span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="text-[11px] text-gray-400 hover:text-gray-200 transition-colors flex items-center gap-1"
+        >
+          {copied ? (
+            <>
+              <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+              已复制
+            </>
+          ) : (
+            <>
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+              </svg>
+              复制
+            </>
+          )}
+        </button>
+      </div>
+      <SyntaxHighlighter
+        language={language || 'text'}
+        style={oneDark}
+        customStyle={{
+          margin: 0,
+          borderRadius: '0 0 0.5rem 0.5rem',
+          fontSize: '0.8em',
+          padding: '0.75rem 1rem',
+        }}
+      >
+        {children}
+      </SyntaxHighlighter>
+    </div>
+  );
+}
+
+// --- Markdown content renderer ---
+
+const markdownComponents: Components = {
+  code({ className, children, ...props }) {
+    const match = /language-(\w+)/.exec(className || '');
+    const codeStr = String(children).replace(/\n$/, '');
+    // Check if this is a fenced code block (has a language or multiline) vs inline code
+    const isBlock = match || codeStr.includes('\n');
+    if (isBlock) {
+      return <CodeBlock language={match?.[1] || ''}>{codeStr}</CodeBlock>;
+    }
+    // Inline code
+    return (
+      <code className={className} {...props}>
+        {children}
+      </code>
+    );
+  },
+  pre({ children }) {
+    // Let the code component handle rendering; pre wrapper is no longer needed
+    return <>{children}</>;
+  },
+};
+
+function MarkdownContent({ content }: { content: string }) {
+  return (
+    <div className="markdown-body text-sm leading-relaxed text-gray-100">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+// --- Sub-renderers ---
+
 function renderLegacyToolMessage(message: Message) {
   const preview = message.tool_input
     ? (() => {
@@ -210,14 +357,41 @@ function renderSystemEvent(message: Message, payload: JsonRecord | null) {
   const type = message.event_type || (typeof payload?.type === 'string' ? payload.type : 'system');
   const subtype =
     message.event_subtype || (typeof payload?.subtype === 'string' ? payload.subtype : '');
+
+  // Final success result with content → render as normal assistant message
+  if (type === 'result' && subtype === 'success' && message.content && message.content.trim()) {
+    return (
+      <div className="animate-fade-in mb-3 flex justify-start">
+        <div className="max-w-[80%] lg:max-w-[70%]">
+          <div className="flex items-start gap-2">
+            <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border border-emerald-500/40 bg-emerald-600/30">
+              <svg className="h-4 w-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1 group relative">
+              <div className="rounded-2xl rounded-bl-md border border-gray-700/50 bg-gray-800 px-4 py-2.5">
+                <MarkdownContent content={message.content} />
+              </div>
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-xs text-gray-500">{formatTime(message.created_at)}</span>
+                <CopyButton text={message.content} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const summary =
     message.content ||
     (type === 'result'
       ? subtype === 'success'
-        ? 'Claude Code 已完成'
-        : 'Claude Code 执行结束'
+        ? '处理完成'
+        : '执行结束'
       : type === 'error'
-      ? (typeof payload?.message === 'string' ? payload.message : 'Claude Code 错误')
+      ? (typeof payload?.message === 'string' ? payload.message : '错误')
       : subtype || type);
 
   return (
@@ -278,6 +452,8 @@ function renderClaudeBlocks(blocks: JsonRecord[]) {
   );
 }
 
+// --- Main component ---
+
 export default function MessageBubble({ message }: MessageBubbleProps) {
   if (message.role === 'tool' && !message.payload && !message.event_type) {
     return renderLegacyToolMessage(message);
@@ -293,6 +469,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
     return renderSystemEvent(message, payload);
   }
 
+  // User message (from payload blocks)
   if (payloadRole === 'user' && blocks.length > 0 && blocks.every((block) => block.type === 'text')) {
     return (
       <div className="animate-fade-in mb-3 flex justify-end">
@@ -306,6 +483,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
     );
   }
 
+  // Assistant message with only text blocks — render as markdown
   if (payloadRole === 'assistant' && blocks.length > 0 && blocks.every((block) => block.type === 'text')) {
     return (
       <div className="animate-fade-in mb-3 flex justify-start">
@@ -316,11 +494,14 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
               </svg>
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="rounded-2xl rounded-bl-md border border-gray-700/50 bg-gray-800 px-4 py-2.5 text-sm leading-relaxed text-gray-100 whitespace-pre-wrap break-words">
-                {textContent}
+            <div className="min-w-0 flex-1 group relative">
+              <div className="rounded-2xl rounded-bl-md border border-gray-700/50 bg-gray-800 px-4 py-2.5">
+                <MarkdownContent content={textContent} />
               </div>
-              <div className="mt-1 text-xs text-gray-500">{formatTime(message.created_at)}</div>
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-xs text-gray-500">{formatTime(message.created_at)}</span>
+                <CopyButton text={textContent} />
+              </div>
             </div>
           </div>
         </div>
@@ -328,22 +509,36 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
     );
   }
 
+  // Assistant with mixed blocks (text + tool_use etc.)
   if (blocks.length > 0) {
     return (
-      <div className="animate-fade-in mb-4 space-y-2">
+      <div className="animate-fade-in mb-4 space-y-2 group relative">
         {textContent && (
           <div className="flex justify-start">
-            <div className="max-w-[88%] rounded-2xl border border-gray-700/50 bg-gray-800 px-4 py-2.5 text-sm leading-relaxed text-gray-100 whitespace-pre-wrap break-words">
-              {textContent}
+            <div className="flex items-start gap-2 max-w-[88%]">
+              <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border border-emerald-500/40 bg-emerald-600/30">
+                <svg className="h-4 w-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                </svg>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="rounded-2xl rounded-bl-md border border-gray-700/50 bg-gray-800 px-4 py-2.5">
+                  <MarkdownContent content={textContent} />
+                </div>
+              </div>
             </div>
           </div>
         )}
         {renderClaudeBlocks(blocks)}
-        <div className="text-xs text-gray-500">{formatTime(message.created_at)}</div>
+        <div className="flex items-center gap-1 text-xs text-gray-500">
+          <span>{formatTime(message.created_at)}</span>
+          {textContent && <CopyButton text={textContent} />}
+        </div>
       </div>
     );
   }
 
+  // Plain user message (no payload)
   if (message.role === 'user') {
     return (
       <div className="animate-fade-in mb-3 flex justify-end">
@@ -357,6 +552,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
     );
   }
 
+  // Fallback: plain assistant/system message rendered as markdown
   return (
     <div className="animate-fade-in mb-3 flex justify-start">
       <div className="max-w-[80%] lg:max-w-[70%]">
@@ -366,11 +562,14 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
               <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
             </svg>
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="rounded-2xl rounded-bl-md border border-gray-700/50 bg-gray-800 px-4 py-2.5 text-sm leading-relaxed text-gray-100 whitespace-pre-wrap break-words">
-              {message.content}
+          <div className="min-w-0 flex-1 group relative">
+            <div className="rounded-2xl rounded-bl-md border border-gray-700/50 bg-gray-800 px-4 py-2.5">
+              <MarkdownContent content={message.content} />
             </div>
-            <div className="mt-1 text-xs text-gray-500">{formatTime(message.created_at)}</div>
+            <div className="flex items-center gap-1 mt-1">
+              <span className="text-xs text-gray-500">{formatTime(message.created_at)}</span>
+              <CopyButton text={message.content} />
+            </div>
           </div>
         </div>
       </div>

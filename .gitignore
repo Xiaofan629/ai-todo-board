@@ -20,6 +20,9 @@ yarn-error.log*
 # Environment
 .env
 
+# MCP config (contains tokens)
+mcp_config.json
+
 # Database
 *.db
 data/
@@ -37,3 +40,5 @@ Thumbs.db
 
 # Build
 frontend/dist/
+
+docs*

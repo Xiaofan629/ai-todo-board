@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import type { Todo, TodoStatus } from '../types';
-import { reorderTodo } from '../api';
+import { reorderTodo, startDoingTodo } from '../api';
 import TodoCard from './TodoCard';
 import GanttChart from './GanttChart';
 
@@ -27,7 +27,7 @@ const DATE_FILTERS: { value: number; label: string }[] = [
 
 export default function TodoList({ todos, selectedId, onSelect, onTodosChanged }: TodoListProps) {
   const [statusFilter, setStatusFilter] = useState<TodoStatus | 'all' | 'not_done'>('not_done');
-  const [dateFilter, setDateFilter] = useState(7);
+  const [dateFilter, setDateFilter] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [ownerName, setOwnerName] = useState('TODOs');
   const [showGanttModal, setShowGanttModal] = useState(false);
@@ -45,6 +45,13 @@ export default function TodoList({ todos, selectedId, onSelect, onTodosChanged }
     position: 'top' | 'bottom';
     promoteToDoing: boolean;
   } | null>(null);
+  // "Start doing" via modal (no target needed)
+  const [pendingStartDoing, setPendingStartDoing] = useState<number | null>(null);
+
+  // Weekly report modal
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportContent, setReportContent] = useState('');
+  const [reportLoading, setReportLoading] = useState(false);
 
   // Track the drag target index calculated on last dragOver
   const dropTargetRef = useRef<{ index: number; position: 'top' | 'bottom' } | null>(null);
@@ -161,29 +168,43 @@ export default function TodoList({ todos, selectedId, onSelect, onTodosChanged }
   }, []);
 
   const confirmReorder = async () => {
-    if (!pendingReorder) return;
     try {
-      await reorderTodo(
-        pendingReorder.todoId,
-        pendingReorder.targetTodoId,
-        pendingReorder.position,
-        reasonText,
-        pendingReorder.promoteToDoing,
-      );
+      if (pendingStartDoing !== null) {
+        // Start doing case
+        await startDoingTodo(pendingStartDoing, reasonText);
+      } else if (pendingReorder) {
+        // Drag reorder case
+        await reorderTodo(
+          pendingReorder.todoId,
+          pendingReorder.targetTodoId,
+          pendingReorder.position,
+          reasonText,
+          pendingReorder.promoteToDoing,
+        );
+      }
       await onTodosChanged();
       setShowReasonModal(false);
       setPendingReorder(null);
+      setPendingStartDoing(null);
       setReasonText('');
     } catch (err) {
-      console.error('Failed to reorder:', err);
+      console.error('Failed:', err);
     }
   };
 
   const cancelReorder = () => {
     setShowReasonModal(false);
     setPendingReorder(null);
+    setPendingStartDoing(null);
     setReasonText('');
   };
+
+  const handleStartDoing = useCallback((todoId: number) => {
+    setPendingStartDoing(todoId);
+    setPendingReorder(null);
+    setReasonText('');
+    setShowReasonModal(true);
+  }, []);
 
   /** Determine the drop indicator for a given card index. */
   const getDropPosition = (index: number): 'top' | 'bottom' | null => {
@@ -251,6 +272,34 @@ export default function TodoList({ todos, selectedId, onSelect, onTodosChanged }
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18v16H3zM7 8h6M7 12h10M7 16h4" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            setShowReportModal(true);
+            setReportLoading(true);
+            setReportContent('');
+            try {
+              const ids = filteredTodos.map(t => t.id).join(',');
+              const res = await fetch(`./api/weekly-report`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ todo_ids: ids }),
+              });
+              const data = await res.json();
+              setReportContent(data.report || '暂无内容');
+            } catch {
+              setReportContent('生成失败，请重试');
+            } finally {
+              setReportLoading(false);
+            }
+          }}
+          className="p-2 bg-gray-800 border border-gray-700/50 rounded-lg text-gray-400 hover:text-green-400 hover:border-green-500/30 transition-colors"
+          title="总结"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
         </button>
       </div>
@@ -329,6 +378,7 @@ export default function TodoList({ todos, selectedId, onSelect, onTodosChanged }
               index={index}
               isSelected={todo.id === selectedId}
               onClick={() => onSelect(todo.id)}
+              onStartDoing={handleStartDoing}
               draggable={todo.status === 'pending'}
               isDragging={dragSourceId === todo.id}
               dropPosition={getDropPosition(index)}
@@ -376,15 +426,15 @@ export default function TodoList({ todos, selectedId, onSelect, onTodosChanged }
         <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 w-full max-w-sm shadow-2xl">
             <h3 className="text-sm font-semibold text-gray-100 mb-3">
-              移动排序
+              {pendingStartDoing !== null ? '开始处理' : '移动排序'}
             </h3>
             <p className="text-xs text-gray-400 mb-3">
-              可选：填写移动原因
+              {pendingStartDoing !== null ? '可选：填写开始处理的原因' : '可选：填写移动原因'}
             </p>
             <textarea
               value={reasonText}
               onChange={(e) => setReasonText(e.target.value)}
-              placeholder="移动原因（可不填）"
+              placeholder={pendingStartDoing !== null ? '开始处理原因（可不填）' : '移动原因（可不填）'}
               rows={3}
               className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500/50 resize-none"
             />
@@ -403,6 +453,39 @@ export default function TodoList({ todos, selectedId, onSelect, onTodosChanged }
               >
                 确认
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Weekly Report Modal */}
+      {showReportModal && (
+        <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+              <h3 className="text-sm font-semibold text-gray-100">总结</h3>
+              <button
+                type="button"
+                onClick={() => setShowReportModal(false)}
+                className="text-gray-400 hover:text-gray-200 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              {reportLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <svg className="animate-spin h-6 w-6 text-green-400 mr-3" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span className="text-sm text-gray-400">正在生成总结...</span>
+                </div>
+              ) : (
+                <div className="prose prose-invert prose-sm max-w-none text-gray-200 whitespace-pre-wrap">{reportContent}</div>
+              )}
             </div>
           </div>
         </div>

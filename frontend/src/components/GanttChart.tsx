@@ -1,5 +1,7 @@
-import { useMemo, useState, useRef, useCallback } from 'react';
+import { useMemo, useState, useRef, useCallback, useEffect } from 'react';
 import type { Todo, TodoStatus } from '../types';
+import { fetchAllTimeSegments } from '../api';
+import type { TimeSegment } from '../types';
 
 interface GanttChartProps {
   todos: Todo[];
@@ -7,12 +9,16 @@ interface GanttChartProps {
   selectedId: number | null;
 }
 
+interface GanttSegment {
+  startTime: number;
+  endTime: number;
+}
+
 interface GanttBarData {
   todoId: number;
   title: string;
   status: TodoStatus;
-  startTime: number;
-  endTime: number;
+  segments: GanttSegment[];
   isInserted: boolean;
   reorderReason: string;
 }
@@ -59,47 +65,52 @@ function formatDateTime(ms: number): string {
 
 // --- Core algorithm ---
 
-function buildGanttData(todos: Todo[]) {
+function buildGanttData(todos: Todo[], timeSegmentsMap: Record<number, TimeSegment[]> = {}) {
   const now = Date.now();
   const sorted = [...todos].sort((a, b) => a.sort_order - b.sort_order);
 
   const bars: GanttBarData[] = sorted.map((todo) => {
-    const createdMs = isoToMs(todo.created_at);
-    const updatedMs = isoToMs(todo.updated_at);
     const isInserted = !!todo.reorder_reason;
+    const segments: GanttSegment[] = [];
+    const dbSegments = timeSegmentsMap[todo.id];
 
-    let startTime: number;
-    let endTime: number;
-
-    switch (todo.status) {
-      case 'done':
-        startTime = createdMs;
-        endTime = updatedMs;
-        break;
-      case 'doing':
-        startTime = createdMs;
-        endTime = now;
-        break;
-      default:
-        startTime = updatedMs;
-        endTime = updatedMs;
-        break;
+    if (dbSegments && dbSegments.length > 0) {
+      for (const seg of dbSegments) {
+        const startMs = isoToMs(seg.started_at);
+        const endMs = seg.ended_at ? isoToMs(seg.ended_at) : now;
+        if (endMs >= startMs) {
+          segments.push({ startTime: startMs, endTime: endMs });
+        }
+      }
     }
 
-    if (endTime < startTime) endTime = startTime;
+    if (segments.length === 0) {
+      const createdMs = isoToMs(todo.created_at);
+      const updatedMs = isoToMs(todo.updated_at);
+      switch (todo.status) {
+        case 'done':
+          segments.push({ startTime: createdMs, endTime: updatedMs });
+          break;
+        case 'doing':
+          segments.push({ startTime: createdMs, endTime: now });
+          break;
+        default:
+          segments.push({ startTime: updatedMs, endTime: updatedMs });
+          break;
+      }
+    }
 
     return {
       todoId: todo.id,
       title: todo.title || todo.content || `Todo #${todo.id}`,
       status: todo.status,
-      startTime,
-      endTime,
+      segments,
       isInserted,
       reorderReason: todo.reorder_reason,
     };
   });
 
-  const allTimes = bars.flatMap((b) => [b.startTime, b.endTime]);
+  const allTimes = bars.flatMap((b) => b.segments.flatMap((s) => [s.startTime, s.endTime]));
   if (allTimes.length === 0) {
     return { bars, ticks: [], timeStart: now, timeEnd: now, totalMs: 1 };
   }
@@ -172,12 +183,14 @@ function GanttRow({
   labelWidth: number;
 }) {
   const isActive = bar.status !== 'pending';
-  const leftPercent = ((bar.startTime - timeStart) / totalMs) * 100;
-  const widthPercent = isActive
-    ? Math.max(((bar.endTime - bar.startTime) / totalMs) * 100, 0.5)
-    : 0;
   const cfg = STATUS_COLORS[bar.status];
-  const duration = bar.endTime - bar.startTime;
+  const totalDuration = bar.segments.reduce((sum, s) => sum + (s.endTime - s.startTime), 0);
+
+  // Compute left position for tooltip from first segment
+  const firstSeg = bar.segments[0];
+  const firstLeft = firstSeg
+    ? ((firstSeg.startTime - timeStart) / totalMs) * 100
+    : 0;
 
   return (
     <div
@@ -205,44 +218,54 @@ function GanttRow({
 
       {/* Bar area */}
       <div className="flex-1 relative h-full group">
-        {isActive ? (
-          <div
-            className="absolute inset-y-0 flex items-center"
-            data-gantt-bar-shell
-            style={{ left: `${leftPercent}%`, width: `${widthPercent}%` }}
-          >
-            <div
-              className={`relative flex h-5 items-center rounded-sm ${cfg.bar} shadow-sm ${cfg.glow} gantt-bar-animate group-hover:brightness-125 transition-all`}
-              data-gantt-animated
-              data-gantt-bar-box
-              style={{ width: '100%' }}
-            >
-              {widthPercent > 10 && (
-                <span
-                  className="block truncate px-1.5 text-[10px] leading-none text-white/90"
-                  data-gantt-duration-text
+        {isActive && bar.segments.length > 0 ? (
+          bar.segments.map((seg, idx) => {
+            const leftPercent = ((seg.startTime - timeStart) / totalMs) * 100;
+            const widthPercent = Math.max(((seg.endTime - seg.startTime) / totalMs) * 100, 0.5);
+            const isMulti = bar.segments.length > 1;
+            return (
+              <div
+                key={idx}
+                className="absolute inset-y-0 flex items-center"
+                data-gantt-bar-shell
+                style={{ left: `${leftPercent}%`, width: `${widthPercent}%` }}
+              >
+                <div
+                  className={`relative flex h-5 items-center rounded-sm ${cfg.bar} shadow-sm ${cfg.glow} gantt-bar-animate group-hover:brightness-125 transition-all ${isMulti ? 'opacity-80' : ''}`}
+                  data-gantt-animated
+                  data-gantt-bar-box
+                  style={{ width: '100%' }}
                 >
-                  {formatDuration(duration)}
-                </span>
-              )}
-              {bar.isInserted && (
-                <div className="absolute -left-[5px] top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-orange-400 rotate-45 z-10 shadow-sm shadow-orange-400/50" />
-              )}
-            </div>
-          </div>
+                  {widthPercent > 10 && idx === 0 && (
+                    <span
+                      className="block truncate px-1.5 text-[10px] leading-none text-white/90"
+                      data-gantt-duration-text
+                    >
+                      {formatDuration(totalDuration)}
+                    </span>
+                  )}
+                  {bar.isInserted && idx === 0 && (
+                    <div className="absolute -left-[5px] top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-orange-400 rotate-45 z-10 shadow-sm shadow-orange-400/50" />
+                  )}
+                </div>
+              </div>
+            );
+          })
         ) : (
-          <div
-            className="absolute inset-y-0 flex items-center"
-            style={{ left: `${leftPercent}%` }}
-          >
-            <div className="w-2.5 h-2.5 rotate-45 bg-yellow-400/50 border border-yellow-400/70" />
-          </div>
+          bar.segments.length > 0 && bar.segments[0] && (
+            <div
+              className="absolute inset-y-0 flex items-center"
+              style={{ left: `${((bar.segments[0].startTime - timeStart) / totalMs) * 100}%` }}
+            >
+              <div className="w-2.5 h-2.5 rotate-45 bg-yellow-400/50 border border-yellow-400/70" />
+            </div>
+          )
         )}
 
         {/* Tooltip */}
         <div
           className="absolute z-30 opacity-0 group-hover:opacity-100 pointer-events-none bottom-full mb-2 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-xs shadow-xl whitespace-nowrap transition-opacity"
-          style={{ left: `max(${leftPercent}%, 40%)` }}
+          style={{ left: `max(${firstLeft}%, 40%)` }}
         >
           <div className="font-medium text-gray-100">{bar.title}</div>
           <div className="text-gray-400 mt-0.5">
@@ -251,10 +274,14 @@ function GanttRow({
           </div>
           {isActive ? (
             <>
-              <div className="text-gray-400 mt-0.5">
-                {formatDateTime(bar.startTime)} → {formatDateTime(bar.endTime)}
-              </div>
-              <div className="text-gray-400">耗时: {formatDuration(duration)}</div>
+              {bar.segments.map((seg, idx) => (
+                <div key={idx} className="text-gray-400 mt-0.5">
+                  {bar.segments.length > 1 && `第${idx + 1}段: `}
+                  {formatDateTime(seg.startTime)} → {formatDateTime(seg.endTime)}
+                  <span className="ml-2 text-gray-500">({formatDuration(seg.endTime - seg.startTime)})</span>
+                </div>
+              ))}
+              <div className="text-gray-400 mt-0.5 border-t border-gray-700 pt-0.5">总耗时: {formatDuration(totalDuration)}</div>
             </>
           ) : (
             <div className="text-gray-500 mt-0.5">未开始</div>
@@ -273,9 +300,19 @@ function GanttRow({
 // --- Main component ---
 
 export default function GanttChart({ todos, onSelect, selectedId }: GanttChartProps) {
+  const [timeSegmentsMap, setTimeSegmentsMap] = useState<Record<number, TimeSegment[]>>({});
+
+  useEffect(() => {
+    if (todos.length === 0) return;
+    const ids = todos.map(t => t.id);
+    fetchAllTimeSegments(ids)
+      .then(setTimeSegmentsMap)
+      .catch(() => setTimeSegmentsMap({}));
+  }, [todos]);
+
   const { bars, ticks, timeStart, timeEnd, totalMs } = useMemo(
-    () => buildGanttData(todos),
-    [todos],
+    () => buildGanttData(todos, timeSegmentsMap),
+    [todos, timeSegmentsMap],
   );
 
   const nowPercent = totalMs > 0 ? ((Date.now() - timeStart) / totalMs) * 100 : 0;

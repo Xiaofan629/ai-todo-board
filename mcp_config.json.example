@@ -1,0 +1,14 @@
+{
+  "example-stdio": {
+    "command": "your_command",
+    "args": ["--arg1", "value1"],
+    "env": {
+      "API_KEY": "your_api_key"
+    },
+    "transport": "stdio"
+  },
+  "example-sse": {
+    "url": "https://your-mcp-server.example.com/sse?token=your_token",
+    "transport": "sse"
+  }
+}
