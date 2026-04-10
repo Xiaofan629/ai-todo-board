@@ -333,6 +333,9 @@ async def find_todo_by_platform_msg_id(platform_msg_id: str) -> Optional[dict]:
     if not rows:
         return None
     return await get_todo(rows[0]["todo_id"])
+
+
+async def delete_todo(todo_id: int):
     """Delete a todo and its messages permanently."""
     db = await get_db()
     await db.execute("DELETE FROM messages WHERE todo_id = ?", (todo_id,))

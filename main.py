@@ -281,6 +281,24 @@ async def _handle_bot_message(data: dict):
         prompt = _build_prompt(sender, content)
         full_response, reply_message = await _run_agent_for_todo(
             todo_id, prompt, include_history=True)
+
+        # Enforce reply_to_user tool: if the agent didn't call it, retry once.
+        if not reply_message or not reply_message.strip():
+            logger.warning("Agent did not call reply_to_user for todo %s; retrying with enforcement prompt", todo_id)
+            if full_response and full_response.strip():
+                retry_prompt = (
+                    f"你刚才的输出内容是：\n{full_response.strip()}\n\n"
+                    "注意：因为你没有调用 `reply_to_user` 工具，用户没有收到以上内容。\n"
+                    "现在你必须调用 `reply_to_user` 工具，把上述内容完整发送给用户。"
+                )
+            else:
+                retry_prompt = (
+                    "注意：你刚才没有调用 `reply_to_user` 工具回复用户，导致用户没有收到任何消息。\n"
+                    "现在你必须调用 `reply_to_user` 工具，把结论完整回复给用户。"
+                )
+            full_response, reply_message = await _run_agent_for_todo(
+                todo_id, retry_prompt, include_history=True)
+
         final = reply_message or full_response
         if not final or not final.strip():
             # Fallback: generate a simple acknowledgment
