@@ -30,8 +30,8 @@ _GIT_READ_ONLY_SUBCOMMANDS = {
 }
 
 _BLOCKED_PATTERNS = [
-    ">>", ">",
-    "sed -i", "rm", "rmdir", "mv", "cp", "chmod", "chown",
+    ">>",
+    "rm", "rmdir", "mv", "cp", "chmod", "chown",
     "pip install", "npm install", "curl -X POST", "wget",
     "kill", "pkill", "mkfifo", "nc", "dd",
 ]

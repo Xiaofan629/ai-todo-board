@@ -54,30 +54,33 @@
 
 <!-- 截图预留位 -->
 
-## 企业微信对话
+## 机器人对话
 
-![企业微信对话](https://raw.githubusercontent.com/Xiaofan629/my-image-host/refs/heads/main/a666bf9822e1bf3cc881f95c0e67ec76.jpg)
+| 企业微信 | 飞书 |
+|:---:|:---:|
+| ![企业微信对话](https://xiaofan-image.oss-cn-beijing.aliyuncs.com/notion/790c3f974d6d9872c11756c8239028cf.jpg) | ![飞书对话](https://xiaofan-image.oss-cn-beijing.aliyuncs.com/notion/1775840432101.png) |
 
 ### 主界面 - 任务列表
 
-![任务列表](https://raw.githubusercontent.com/Xiaofan629/my-image-host/refs/heads/main/1d1849b7601bc1362a9f7b1ee960b15d.png)
+![任务列表](https://xiaofan-image.oss-cn-beijing.aliyuncs.com/notion/0bb4fe12b61e969ddcd825f8f6731324.png)
 
 ### 甘特图
 
-![甘特图](https://raw.githubusercontent.com/Xiaofan629/my-image-host/refs/heads/main/f29efd7c189532f769ac0ab7ac2cd45d.png)
+![甘特图](https://xiaofan-image.oss-cn-beijing.aliyuncs.com/notion/21ad34f01fef294ee4d1f6d53c324d88.png)
 
 
-### 甘特图下载图片
+### todo 总结
 
-![甘特图下载图片](https://raw.githubusercontent.com/Xiaofan629/my-image-host/refs/heads/main/7bf82ae14e2315ff8f24103d89918dd2.png)
+![todo总结](https://xiaofan-image.oss-cn-beijing.aliyuncs.com/notion/043c7a7ad1088b5498c069f97896e271.png)
+
 
 <!-- 截图预留位结束 -->
 
 ## 快速开始
 
 ### 环境要求
-- Python 3.8+
-- Node.js 16+
+- Python 3.12
+- Node.js v23.11.1
 
 ### 安装步骤
 
@@ -292,7 +295,7 @@ Agent 内置了以下 4 个基础工具：
 ### 安全机制
 
 - **命令白名单**：`bash_read` 仅允许预定义的只读命令（`cat`/`head`/`tail`/`ls`/`find`/`grep`/`rg`/`git` 只读子命令等）
-- **写入拦截**：屏蔽 `>`/`>>`/`rm`/`mv`/`pip install`/`curl -X POST` 等危险操作
+- **写入拦截**：屏蔽 `rm`/`mv`/`pip install`/`curl -X POST` 等危险操作
 - **Git 只读**：仅允许 `git log`/`git diff`/`git status` 等只读子命令，禁止 `git push`/`git commit` 等
 - **输出截断**：单次工具输出超过 10000 字符自动截断
 - **超时控制**：工具执行超时 30 秒自动终止
