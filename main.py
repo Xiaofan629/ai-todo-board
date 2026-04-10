@@ -75,9 +75,20 @@ def _extract_event_text(event: dict) -> str:
     if event_type == "assistant":
         return _extract_text_from_content(event.get("message", {}).get("content"))
     if event_type == "result":
-        return (event.get("result") or "").strip()
+        result = event.get("result")
+        if isinstance(result, str):
+            return result.strip()
+        if isinstance(result, list):
+            return _extract_text_from_content(result)
+        return str(result).strip() if result is not None else ""
     if event_type == "error":
-        return (event.get("message") or event.get("content") or "").strip()
+        msg = event.get("message")
+        if msg is not None:
+            return str(msg).strip()
+        content = event.get("content")
+        if content is not None:
+            return _extract_text_from_content(content) if isinstance(content, list) else str(content).strip()
+        return ""
     return ""
 
 
