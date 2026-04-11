@@ -1,5 +1,7 @@
 # AI Todo Board
 
+> An intelligent todo management system designed for workplace collaboration, with WeCom and Feishu bot integration.
+
 [![GitHub](https://img.shields.io/badge/GitHub-Xiaofan629%2Fai--todo--board-blue?logo=github)](https://github.com/Xiaofan629/ai-todo-board)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -52,9 +54,7 @@
 
 ## 截图
 
-<!-- 截图预留位 -->
-
-## 机器人对话
+### 机器人对话
 
 | 企业微信 | 飞书 |
 |:---:|:---:|
@@ -69,18 +69,15 @@
 ![甘特图](https://xiaofan-image.oss-cn-beijing.aliyuncs.com/notion/21ad34f01fef294ee4d1f6d53c324d88.png)
 
 
-### todo 总结
+### Todo 总结
 
 ![todo总结](https://xiaofan-image.oss-cn-beijing.aliyuncs.com/notion/043c7a7ad1088b5498c069f97896e271.png)
-
-
-<!-- 截图预留位结束 -->
 
 ## 快速开始
 
 ### 环境要求
 - Python 3.12
-- Node.js v23.11.1
+- Node.js >= 18
 
 ### 安装步骤
 
@@ -232,7 +229,7 @@ nohup ./start.sh > output.log 2>&1 &
 # 查看日志
 tail -f output.log
 # 停止服务
-lsof -ti:9526 | xargs kill -9
+lsof -ti:9526 | xargs kill
 ```
 
 ## 技术栈
@@ -303,6 +300,7 @@ Agent 内置了以下 4 个基础工具：
 ## 项目结构
 
 ```
+ai-todo-board/
 ├── main.py              # FastAPI 主服务，REST API + 消息处理
 ├── database.py          # SQLite 数据库操作层
 ├── config.py            # 环境变量配置
@@ -324,4 +322,4 @@ Agent 内置了以下 4 个基础工具：
 
 ## License
 
-MIT
+[MIT](LICENSE)
