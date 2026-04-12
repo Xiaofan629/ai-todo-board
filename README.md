@@ -176,9 +176,8 @@ cp mcp_config.json.example mcp_config.json
 
 ### 飞书机器人
 
-1. 登录 [飞书开放平台](https://open.feishu.cn/app) → 创建应用
-2. 开启「机器人」能力
-3. 在「事件与回调」中开启 **WebSocket 长连接**模式
+1. 登录 [飞书开放平台](https://open.feishu.cn/app) → 创建自建应用
+2. 在「事件与回调」中修改订阅方式为 **长连接** 模式
 4. 添加以下权限并开通：
 
 | 权限 | 权限标识 | 用途 |
